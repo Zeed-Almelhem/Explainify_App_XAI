@@ -1,64 +1,137 @@
-# Web Pro Identification ML Model App
+# Explainify: Explainable AI Model Analysis Platform
 
 ## Description
-This application provides an interactive interface for exploring and understanding machine learning models used to identify web professionals. The system includes two models:
-- 0 days model: Identifies web professionals within 12 hours of signup
-- 7 days model: Identifies web professionals within 7 days of signup
+Explainify is a powerful Explainable AI (XAI) platform designed to demystify machine learning models through comprehensive visualizations and interactive analysis tools. By bridging the gap between complex ML models and human understanding, Explainify helps data scientists, analysts, and stakeholders gain deeper insights into their models' behavior and decision-making processes.
+
+The platform supports a wide range of ML frameworks including scikit-learn, TensorFlow, PyTorch, XGBoost, LightGBM, and CatBoost, making it versatile for different model architectures and use cases. Whether you're working with classification, regression, or clustering models, Explainify provides the tools to understand your model's inner workings and validate its performance.
+
+### Key Benefits
+- **Model Transparency**: Understand how your models make decisions
+- **Interactive Analysis**: Explore model behavior through dynamic visualizations
+- **Framework Agnostic**: Support for major ML libraries and custom models
+- **Automated Insights**: Intelligent feature analysis and model diagnostics
+- **No-Code Exploration**: User-friendly interface for technical and non-technical users
 
 ## Features
-- **Main Dashboard**: Overview of the models and their purposes
-- **Features Analysis**: Visualize and understand feature importance for each model
-- **Interactive Playground**: Test different feature combinations and see their impact on predictions
-- **User Investigation**: Look up specific users by UUID to see their web pro probability scores
-- **Enhanced Visualizations**:
-  - **Data Analysis**: Distribution plots, box plots, violin plots, correlation matrices, scatter plots, missing values heatmaps, and pair plots
-  - **Model Performance**: ROC curves, confusion matrices, residual plots, actual vs predicted plots, and clustering visualizations
-  - **Feature Importance**: Feature importance bar plots and SHAP value analysis
-  - **Model Diagnostics**: Model architecture visualization and parameter inspection
+
+### Pre-built Models
+- **Binary Customer Churn Classifier**: Analyze customer churn prediction
+- **House Price Predictor**: Explore house price predictions
+- **Customer Segmentation**: Understand customer segments based on wholesale data
+- More models coming soon!
+
+### Analysis Capabilities
+- **Data Exploration**:
+  - Dataset overview and statistics
+  - Missing values analysis
+  - Data type information
+  - Distribution plots
+  - Correlation analysis
+  - Feature relationships
+
+- **Data Analysis**:
+  - Target distribution visualization
+  - Feature analysis by target
+  - Numerical and categorical feature insights
+  - Interactive visualizations
+
+### Model Types & Framework Support
+1. **Classification Models**:
+   - Binary and multiclass classification
+   - Supported Frameworks:
+     - scikit-learn (RandomForest, SVM, etc.)
+     - TensorFlow/Keras
+     - PyTorch
+     - XGBoost
+     - LightGBM
+     - CatBoost
+
+2. **Regression Models**:
+   - Linear and non-linear regression
+   - Supported Frameworks:
+     - scikit-learn
+     - TensorFlow/Keras
+     - PyTorch
+     - XGBoost
+     - LightGBM
+
+3. **Clustering Models**:
+   - K-means, hierarchical clustering
+   - Density-based clustering
+   - Supported Frameworks:
+     - scikit-learn
+     - Custom clustering implementations
+
+### XAI Capabilities
+- **Feature Importance Analysis**:
+  - Global feature importance
+  - Local feature importance (SHAP, LIME support coming soon)
+  - Feature interaction analysis
+
+- **Model Behavior Analysis**:
+  - Decision boundary visualization
+  - Prediction confidence analysis
+  - Model comparison tools
+
+### Custom Model Support
+- Upload your own dataset (CSV format)
+- Import pre-trained models (pickle/joblib format)
+- Automatic feature type detection
+- Interactive analysis tools
+- Support for custom model implementations
 
 ## Technical Stack
 - **Frontend**: Streamlit
-- **ML Framework**: Custom model implementation with feature importance analysis
 - **Data Processing**: Pandas, NumPy
-- **Visualization**: Plotly, Seaborn, Matplotlib
-- **Model Interpretability**: SHAP, LIME
-- **Model Evaluation**: Yellowbrick
-- **Database Connection**: Wix Trino Client
+- **Visualization**: Plotly Express
+- **Model Support**: 
+  - scikit-learn
+  - TensorFlow (coming soon)
+  - PyTorch (coming soon)
+  - XGBoost (coming soon)
+  - LightGBM (coming soon)
+  - CatBoost (coming soon)
 
 ## Dependencies
-- wix-trino-client
-- streamlit
-- streamlit_option_menu
-- pickle
-- pandas
-- matplotlib
-- numpy
-- plotly
-- seaborn
-- shap
-- lime
-- yellowbrick
+streamlit>=1.31.0
+pandas>=2.2.0
+numpy>=1.26.0
+plotly>=5.18.0
+scikit-learn>=1.4.0
+joblib>=1.3.0
 
 ## Project Structure
-- `app.py`: Main application entry point with Streamlit UI implementation
-- `model_class.py`: Core model implementation with feature importance and prediction logic
-- `design.py`: UI design elements and text content
-- `files/`: Contains model files, training data, and feature descriptions
+- `app.py`: Main application with UI implementation
+- `visualizations.py`: Visualization components and utilities
+- `files/`: Pre-built model files and datasets
+  - `Classification/`: Classification model files
+  - `Regression/`: Regression model files
+  - `Clustering/`: Clustering model files
 
 ## Usage
-1. Run the application using Streamlit:
+1. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+2. Run the application:
 ```bash
 streamlit run app.py
 ```
 
-2. Navigate through different sections:
-   - Use the sidebar to switch between Main, Features, Playground, and User Investigation
-   - Explore feature importance visualizations
-   - Test predictions with different feature combinations
-   - Look up specific users using their UUID
+3. Using the application:
+   - Select a model type (Classification/Regression/Clustering)
+   - Choose between pre-built models or upload your own
+   - Click "Start Model Exploration" to begin analysis
+   - Navigate through Data Exploration and Analysis tabs
 
-## Model Information
-The models analyze various user behaviors and characteristics to determine the likelihood of them being web professionals. Key features include user activity patterns, engagement metrics, and account characteristics.
+## Contributing
+Feel free to contribute to this project by:
+- Adding new pre-built models
+- Enhancing visualization capabilities
+- Improving feature detection and analysis
+- Adding support for more model types and frameworks
+- Implementing additional XAI techniques
 
-## Data Privacy
-The application connects to production data through Wix Trino Client. Ensure proper authentication and authorization when accessing user data.
+## License
+MIT License
