@@ -1,12 +1,11 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 import streamlit as st
-from streamlit_option_menu import option_menu
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-from visualizations import ModelVisualizer
 import numpy as np
+import plotly.express as px
+from visualizations import ModelVisualizer
+import plotly.graph_objects as go
 import pickle
 import joblib
 from sklearn.metrics import roc_curve, confusion_matrix
@@ -50,7 +49,7 @@ def set_sidebar_style():
         .sidebar-title {
             color: white;
             font-size: 24px;
-            margin-left: 10px;
+            margin-left: 2px;
         }
         
         .sidebar-section {
@@ -71,7 +70,7 @@ def set_sidebar_style():
         .sidebar-logo {
             width: 50px;
             height: 50px;
-            margin-right: 1rem;
+            margin-right: 0.5rem;
             filter: invert(1);
         }
         
@@ -392,6 +391,308 @@ def load_prebuilt_model(model_type):
         st.error(f"Error loading pre-built model: {str(e)}")
         return None
 
+def create_data_exploration(df):
+    st.markdown("## Data Exploration")
+    
+    # Dataset Overview
+    st.markdown("### Dataset Overview")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Number of Rows", df.shape[0])
+    with col2:
+        st.metric("Number of Columns", df.shape[1])
+    
+    # Data Preview
+    st.markdown("### Data Preview")
+    st.dataframe(df.head())
+    
+    # Missing Values Analysis
+    st.markdown("### Missing Values Analysis")
+    missing_data = pd.DataFrame({
+        'Column': df.columns,
+        'Missing Values': df.isnull().sum(),
+        'Percentage': (df.isnull().sum() / len(df) * 100).round(2)
+    })
+    st.dataframe(missing_data)
+    
+    # Data Types Information
+    st.markdown("### Data Types Information")
+    dtypes_df = pd.DataFrame({
+        'Column': df.columns,
+        'Data Type': df.dtypes.astype(str),
+        'Unique Values': [df[col].nunique() for col in df.columns]
+    })
+    st.dataframe(dtypes_df)
+    
+    # Numerical Features Analysis
+    st.markdown("### Numerical Features Analysis")
+    numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns
+    if len(numeric_cols) > 0:
+        stats_df = df[numeric_cols].describe()
+        st.dataframe(stats_df)
+        
+        # Distribution Plots
+        st.markdown("#### Distribution Plots")
+        selected_num_col = st.selectbox("Select Numerical Feature", numeric_cols, key="num_feat_selector")
+        fig = px.histogram(df, x=selected_num_col, nbins=30,
+                          title=f"Distribution of {selected_num_col}")
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Categorical Features Analysis
+    st.markdown("### Categorical Features Analysis")
+    cat_cols = df.select_dtypes(include=['object', 'category']).columns
+    if len(cat_cols) > 0:
+        selected_cat_col = st.selectbox("Select Categorical Feature", cat_cols, key="cat_feat_selector")
+        value_counts = df[selected_cat_col].value_counts()
+        fig = px.pie(values=value_counts.values, names=value_counts.index,
+                     title=f"Distribution of {selected_cat_col}")
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Correlation Analysis
+    if len(numeric_cols) > 1:
+        st.markdown("### Correlation Analysis")
+        corr = df[numeric_cols].corr()
+        fig = px.imshow(corr, title="Feature Correlation Matrix",
+                       color_continuous_scale='RdBu')
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Scatter Plot Matrix
+        st.markdown("### Feature Relationships")
+        selected_features = st.multiselect(
+            "Select Features for Scatter Plot Matrix",
+            numeric_cols,
+            default=list(numeric_cols)[:3]
+        )
+        if len(selected_features) > 1:
+            fig = px.scatter_matrix(df[selected_features])
+            st.plotly_chart(fig, use_container_width=True)
+
+def create_classification_analysis(df, target_col):
+    """Create classification-specific analysis visualizations."""
+    st.markdown("### Classification Analysis")
+    
+    # Target Distribution
+    st.subheader("Target Distribution")
+    target_counts = df[target_col].value_counts()
+    fig = px.pie(values=target_counts.values, names=target_counts.index,
+                 title=f"Distribution of {target_col}")
+    st.plotly_chart(fig, key="class_target_dist")
+    
+    # Feature Analysis
+    st.subheader("Feature Analysis")
+    numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns
+    categorical_cols = df.select_dtypes(include=['object']).columns
+    
+    # Numeric Features
+    if len(numeric_cols) > 0:
+        st.markdown("#### Numerical Features by Target")
+        selected_num_col = st.selectbox("Select Numerical Feature", 
+                                      [col for col in numeric_cols if col != target_col],
+                                      key="class_num_feat")
+        fig = px.box(df, x=target_col, y=selected_num_col,
+                    title=f"{selected_num_col} Distribution by {target_col}")
+        st.plotly_chart(fig, key="class_num_box")
+    
+    # Categorical Features
+    if len(categorical_cols) > 0:
+        st.markdown("#### Categorical Features by Target")
+        selected_cat_col = st.selectbox(
+            "Select Categorical Feature",
+            [col for col in categorical_cols if col != target_col],
+            key="class_cat_feat"
+        )
+        
+        # Create contingency table
+        contingency = pd.crosstab(df[selected_cat_col], df[target_col], normalize='index')
+        fig = px.bar(contingency, barmode='stack',
+                    title=f"{selected_cat_col} vs {target_col}")
+        st.plotly_chart(fig, key="class_cat_bar")
+
+def create_regression_analysis(df, target_col):
+    """Create regression-specific analysis visualizations."""
+    st.markdown("### Regression Analysis")
+    
+    # Target Distribution
+    st.subheader("Target Distribution")
+    fig = px.histogram(df, x=target_col, nbins=30,
+                      title=f"Distribution of {target_col}")
+    st.plotly_chart(fig, key="reg_target_dist")
+    
+    # Feature Analysis
+    st.subheader("Feature Analysis")
+    numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns
+    categorical_cols = df.select_dtypes(include=['object']).columns
+    
+    # Numeric Features
+    if len(numeric_cols) > 0:
+        st.markdown("#### Numerical Features vs Target")
+        selected_num_col = st.selectbox("Select Numerical Feature",
+                                      [col for col in numeric_cols if col != target_col],
+                                      key="reg_num_feat")
+        fig = px.scatter(df, x=selected_num_col, y=target_col,
+                        title=f"{selected_num_col} vs {target_col}")
+        st.plotly_chart(fig, key="reg_num_scatter")
+    
+    # Categorical Features
+    if len(categorical_cols) > 0:
+        st.markdown("#### Categorical Features vs Target")
+        selected_cat_col = st.selectbox("Select Categorical Feature",
+                                      [col for col in categorical_cols if col != target_col],
+                                      key="reg_cat_feat")
+        fig = px.box(df, x=selected_cat_col, y=target_col,
+                    title=f"{target_col} Distribution by {selected_cat_col}")
+        st.plotly_chart(fig, key="reg_cat_box")
+
+def create_clustering_analysis(df):
+    """Create clustering-specific analysis visualizations."""
+    st.markdown("### Clustering Analysis")
+    
+    # Feature Distributions
+    st.subheader("Feature Distributions")
+    numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns
+    
+    # Select features for visualization
+    selected_features = st.multiselect(
+        "Select Features to Analyze",
+        numeric_cols,
+        default=list(numeric_cols)[:2] if len(numeric_cols) >= 2 else list(numeric_cols),
+        key="cluster_feat_select"
+    )
+    
+    if len(selected_features) >= 2:
+        # Scatter plot
+        st.markdown("#### Feature Relationships")
+        fig = px.scatter(df, x=selected_features[0], y=selected_features[1],
+                        title=f"{selected_features[0]} vs {selected_features[1]}")
+        st.plotly_chart(fig, key="cluster_scatter")
+        
+        # Correlation heatmap for selected features
+        st.markdown("#### Correlation Analysis")
+        corr = df[selected_features].corr()
+        fig = px.imshow(corr, title="Feature Correlation Matrix",
+                       color_continuous_scale='RdBu')
+        st.plotly_chart(fig, key="cluster_heatmap")
+    else:
+        st.info("Please select at least 2 features for analysis.")
+
+def show_classification_metrics(visualizer, df, target_col, key_prefix=""):
+    """Show classification metrics using the visualizer."""
+    # Distribution of target
+    fig = visualizer.create_distribution_plot(target_col)
+    st.plotly_chart(fig, key=f"{key_prefix}class_target_dist")
+    
+    # ROC Curve
+    if hasattr(visualizer.model, "predict_proba"):
+        y_pred_proba = visualizer.model.predict_proba(df.drop(target_col, axis=1))[:, 1]
+        fig = visualizer.create_roc_curve(df[target_col], y_pred_proba)
+        st.plotly_chart(fig, key=f"{key_prefix}class_roc")
+    
+    # Confusion Matrix
+    if hasattr(visualizer.model, "predict"):
+        y_pred = visualizer.model.predict(df.drop(target_col, axis=1))
+        fig = visualizer.create_confusion_matrix(df[target_col], y_pred)
+        st.plotly_chart(fig, key=f"{key_prefix}class_cm")
+
+def show_regression_metrics(visualizer, df, target_col, key_prefix=""):
+    """Show regression metrics using the visualizer."""
+    # Distribution of target
+    fig = visualizer.create_distribution_plot(target_col)
+    st.plotly_chart(fig, key=f"{key_prefix}reg_target_dist")
+    
+    # Residuals plot
+    if hasattr(visualizer.model, "predict"):
+        y_pred = visualizer.model.predict(df.drop(target_col, axis=1))
+        fig = visualizer.create_residuals_plot(df[target_col], y_pred)
+        st.plotly_chart(fig, key=f"{key_prefix}reg_residuals")
+        
+        # Actual vs Predicted
+        fig = visualizer.create_actual_vs_predicted(df[target_col], y_pred)
+        st.plotly_chart(fig, key=f"{key_prefix}reg_actual_pred")
+
+def show_clustering_metrics(visualizer, df, key_prefix=""):
+    """Show clustering metrics using the visualizer."""
+    # Select features for visualization
+    numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns
+    selected_features = st.multiselect(
+        "Select Features for Cluster Visualization",
+        numeric_cols,
+        default=list(numeric_cols)[:2] if len(numeric_cols) >= 2 else list(numeric_cols),
+        key=f"{key_prefix}cluster_viz_feat"
+    )
+    
+    if len(selected_features) >= 2:
+        if hasattr(visualizer.model, "predict"):
+            labels = visualizer.model.predict(df[selected_features])
+            fig = visualizer.create_cluster_plot(selected_features, labels)
+            st.plotly_chart(fig, key=f"{key_prefix}cluster_viz")
+        
+        # Correlation matrix
+        fig = visualizer.create_correlation_matrix(selected_features)
+        st.plotly_chart(fig, key=f"{key_prefix}cluster_corr")
+
+def show_feature_importance(visualizer, df, target_col, key_prefix=""):
+    """Show feature importance using the visualizer."""
+    if visualizer.model is not None and hasattr(visualizer.model, "feature_importances_"):
+        features = df.drop(target_col, axis=1).columns
+        fig = visualizer.create_feature_importance_plot(
+            visualizer.model.feature_importances_,
+            features
+        )
+        st.plotly_chart(fig, key=f"{key_prefix}feat_imp")
+        
+        # SHAP values if available
+        try:
+            fig = visualizer.create_shap_summary_plot()
+            if fig is not None:
+                st.pyplot(fig, key=f"{key_prefix}shap_summary")
+        except:
+            st.info("SHAP values are not available for this model.")
+    else:
+        st.info("Feature importance is not available for this model.")
+
+def show_model_diagnostics(visualizer, df, target_col=None, key_prefix=""):
+    """Show model diagnostics using the visualizer."""
+    if visualizer.model_type == "Classification":
+        # Show confusion matrix and ROC curve
+        if hasattr(visualizer.model, "predict"):
+            y_pred = visualizer.model.predict(df.drop(target_col, axis=1))
+            fig = visualizer.create_confusion_matrix(df[target_col], y_pred)
+            st.plotly_chart(fig, key=f"{key_prefix}diag_cm")
+            
+        if hasattr(visualizer.model, "predict_proba"):
+            y_pred_proba = visualizer.model.predict_proba(df.drop(target_col, axis=1))[:, 1]
+            fig = visualizer.create_roc_curve(df[target_col], y_pred_proba)
+            st.plotly_chart(fig, key=f"{key_prefix}diag_roc")
+            
+    elif visualizer.model_type == "Regression":
+        # Show residuals and actual vs predicted plots
+        if hasattr(visualizer.model, "predict"):
+            y_pred = visualizer.model.predict(df.drop(target_col, axis=1))
+            fig = visualizer.create_residuals_plot(df[target_col], y_pred)
+            st.plotly_chart(fig, key=f"{key_prefix}diag_residuals")
+            
+            fig = visualizer.create_actual_vs_predicted(df[target_col], y_pred)
+            st.plotly_chart(fig, key=f"{key_prefix}diag_actual_pred")
+            
+    elif visualizer.model_type == "Clustering":
+        # Show cluster visualization and correlation matrix
+        numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns
+        selected_features = st.multiselect(
+            "Select Features for Diagnostics",
+            numeric_cols,
+            default=list(numeric_cols)[:2] if len(numeric_cols) >= 2 else list(numeric_cols),
+            key=f"{key_prefix}diag_cluster_feat"
+        )
+        
+        if len(selected_features) >= 2:
+            if hasattr(visualizer.model, "predict"):
+                labels = visualizer.model.predict(df[selected_features])
+                fig = visualizer.create_cluster_plot(selected_features, labels)
+                st.plotly_chart(fig, key=f"{key_prefix}diag_cluster")
+            
+            fig = visualizer.create_correlation_matrix(selected_features)
+            st.plotly_chart(fig, key=f"{key_prefix}diag_corr")
+
 def main():
     st.set_page_config(layout='wide', page_icon='🤖', page_title='ML Model Explorer')
     set_sidebar_style()
@@ -401,7 +702,7 @@ def main():
         # Logo and Title in a row
         st.markdown("""
             <div class="header-container">
-                <img src="https://raw.githubusercontent.com/Zeed-Almelhem/Explainify/6f7fab71d30a185b9f88acfe59b4b8ff44137f3d/analyze-svgrepo-com.svg" class="sidebar-logo">
+                <img src="https://raw.githubusercontent.com/Zeed-Almelhem/Explainify/83b290fe414bb61ca3e8bc16cdb8640a201266fc/analysis-svgrepo-com.svg" class="sidebar-logo">
                 <div class="sidebar-title">Explainify</div>
             </div>
         """, unsafe_allow_html=True)
@@ -524,7 +825,24 @@ def main():
                     # Add Start Exploration button
                     if st.button("🔍 Start Model Exploration", key="explore_churn"):
                         st.session_state.start_exploration = True
+                    
+                    # Show analysis tabs only after clicking Start Exploration
+                    if st.session_state.start_exploration:
+                        data_exp_tab, data_analysis_tab = st.tabs([
+                            "Data Exploration", "Data Analysis"
+                        ])
                         
+                        # Data Exploration tab
+                        with data_exp_tab:
+                            create_data_exploration(df)
+                        
+                        # Data Analysis tab
+                        with data_analysis_tab:
+                            create_classification_analysis(df, target_col)
+                elif st.session_state.selected_model == "Brazilian E-Commerce Dataset":
+                    st.write("Coming soon: Predict order status in Brazilian e-commerce transactions.")
+                elif st.session_state.selected_model == "No-show Flight Prediction Dataset":
+                    st.write("Coming soon: Predict whether a passenger will show up for their flight.")
             elif st.session_state.model_type == "Regression":
                 if st.session_state.selected_model == "House Price Predictor":
                     st.write("Predict house prices based on various features like location, size, and amenities.")
@@ -577,12 +895,16 @@ def main():
                     if st.button("🔍 Start Model Exploration", key="explore_house"):
                         st.session_state.start_exploration = True
                     
+                elif st.session_state.selected_model == "International Football Results":
+                    st.write("Coming soon: Predict football match scores based on historical data.")
+                elif st.session_state.selected_model == "Air Quality Dataset":
+                    st.write("Coming soon: Predict air quality index based on various environmental factors.")
             elif st.session_state.model_type == "Clustering":
                 if st.session_state.selected_model == "Customer Segmentation (Wholesale)":
                     st.write("Segment wholesale customers based on their annual spending across different product categories.")
                     
                     # Load and display dataset info
-                    df = pd.read_csv('files/Clustering/wholesale_customers_clustering_dataset.csv')
+                    df = pd.read_csv('files/Clustering/customer_segmentation_X_train.csv')
                     
                     # Show data preview
                     st.markdown("#### Data Preview")
@@ -594,25 +916,79 @@ def main():
                     with col1:
                         st.metric("Number of Rows", df.shape[0])
                     with col2:
-                        st.metric("Number of Features", df.shape[1])  # All columns are features in clustering
+                        st.metric("Number of Features", df.shape[1])
                     
                     # Add Start Exploration button
                     if st.button("🔍 Start Model Exploration", key="explore_cluster"):
                         st.session_state.start_exploration = True
+                    
+                    # Show analysis tabs only after clicking Start Exploration
+                    if st.session_state.start_exploration:
+                        data_exp_tab, data_analysis_tab = st.tabs([
+                            "Data Exploration", "Data Analysis"
+                        ])
+                        
+                        # Data Exploration tab
+                        with data_exp_tab:
+                            create_data_exploration(df)
+                        
+                        # Data Analysis tab
+                        with data_analysis_tab:
+                            create_clustering_analysis(df)
+                    
+                elif st.session_state.selected_model == "Custom Dataset and Model":
+                    st.write("Upload your dataset and model to start the analysis.")
     else:
         # Custom dataset and model upload interface
         st.markdown("### Upload Your Data")
         if st.session_state.model_type in ["Classification", "Regression"]:
             if handle_file_upload(require_target=True):
-                st.success(f"Dataset loaded successfully! Target column: {st.session_state.target_column}")
+                df = st.session_state.uploaded_data
+                target_col = st.session_state.target_column
                 
-                # Show model upload section only after data is loaded
+                # Show target column
+                st.markdown("#### Target Column")
+                st.info(f"Target Column: {target_col}")
+                
+                # Show data preview
+                st.markdown("#### Data Preview")
+                st.dataframe(df.head())
+                
+                # Show dataset info
+                st.markdown("#### Dataset Information")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Number of Rows", df.shape[0])
+                with col2:
+                    st.metric("Number of Features", df.shape[1] - 1)  # Subtract target column
+                
+                # Show model upload section
                 st.markdown("### Upload Your Model")
                 if handle_model_upload():
-                    # Add Start Exploration button for custom models
+                    # Add Start Exploration button
                     if st.button("🔍 Start Model Exploration", key="explore_custom"):
                         st.session_state.start_exploration = True
+                    
+                    # Show analysis tabs only after clicking Start Exploration
+                    if st.session_state.start_exploration:
+                        data_exp_tab, data_analysis_tab = st.tabs([
+                            "Data Exploration", "Data Analysis"
+                        ])
                         
+                        # Data Exploration tab
+                        with data_exp_tab:
+                            create_data_exploration(df)
+                        
+                        # Data Analysis tab
+                        with data_analysis_tab:
+                            if st.session_state.model_type == "Classification":
+                                create_classification_analysis(df, target_col)
+                            elif st.session_state.model_type == "Regression":
+                                create_regression_analysis(df, target_col)
+                            elif st.session_state.model_type == "Clustering":
+                                create_clustering_analysis(df)
+            else:
+                st.info("Please upload a dataset to start the analysis.")
         elif st.session_state.model_type == "Clustering":
             if handle_file_upload(require_target=False):
                 st.success("Dataset loaded successfully!")
@@ -637,11 +1013,11 @@ def main():
     # Add visualization section if exploration has started
     if 'start_exploration' in st.session_state and st.session_state.start_exploration:
         st.markdown("---")
-        st.markdown("## Model Exploration")
+        st.markdown("## In-Depth Model Exploration")
         
         # Create tabs for different types of visualizations
         viz_tab1, viz_tab2, viz_tab3, viz_tab4 = st.tabs([
-            "📊 Data Analysis",
+            "📊 Features Discovery",
             "🎯 Model Performance",
             "🔍 Feature Importance",
             "📈 Model Diagnostics"
@@ -653,6 +1029,12 @@ def main():
                 if st.session_state.selected_model == "Binary Customer Churn Classifier":
                     df = pd.read_csv('files/Classification/customer_churn_classification_dataset.csv')
                     target_col = 'Churn'
+                    
+                    # Load the pre-built model
+                    st.session_state.custom_model = load_prebuilt_model("Classification")
+                    if st.session_state.custom_model is None:
+                        st.error("Failed to load pre-built classification model.")
+                        return
             elif st.session_state.model_type == "Regression":
                 if st.session_state.selected_model == "House Price Predictor":
                     try:
@@ -667,7 +1049,7 @@ def main():
                         X = pd.concat([X_train, X_test], axis=0)
                         y = pd.concat([y_train, y_test], axis=0)
                         
-                        # Create a combined dataset
+                        # Create a combined dataset with proper column names
                         df = X.copy()
                         df['price'] = y.values
                         target_col = 'price'
@@ -691,7 +1073,7 @@ def main():
         )
         
         with viz_tab1:
-            st.markdown("### Data Analysis")
+            st.markdown("### Data Discovery")
             
             if df is not None:
                 try:
