@@ -10,12 +10,19 @@ This application provides an interactive interface for exploring and understandi
 - **Features Analysis**: Visualize and understand feature importance for each model
 - **Interactive Playground**: Test different feature combinations and see their impact on predictions
 - **User Investigation**: Look up specific users by UUID to see their web pro probability scores
+- **Enhanced Visualizations**:
+  - **Data Analysis**: Distribution plots, box plots, violin plots, correlation matrices, scatter plots, missing values heatmaps, and pair plots
+  - **Model Performance**: ROC curves, confusion matrices, residual plots, actual vs predicted plots, and clustering visualizations
+  - **Feature Importance**: Feature importance bar plots and SHAP value analysis
+  - **Model Diagnostics**: Model architecture visualization and parameter inspection
 
 ## Technical Stack
 - **Frontend**: Streamlit
 - **ML Framework**: Custom model implementation with feature importance analysis
 - **Data Processing**: Pandas, NumPy
-- **Visualization**: Matplotlib
+- **Visualization**: Plotly, Seaborn, Matplotlib
+- **Model Interpretability**: SHAP, LIME
+- **Model Evaluation**: Yellowbrick
 - **Database Connection**: Wix Trino Client
 
 ## Dependencies
@@ -26,6 +33,11 @@ This application provides an interactive interface for exploring and understandi
 - pandas
 - matplotlib
 - numpy
+- plotly
+- seaborn
+- shap
+- lime
+- yellowbrick
 
 ## Project Structure
 - `app.py`: Main application entry point with Streamlit UI implementation

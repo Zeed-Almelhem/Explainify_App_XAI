@@ -3,9 +3,13 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 import pandas as pd
-import pickle
 import plotly.express as px
 import plotly.graph_objects as go
+from visualizations import ModelVisualizer
+import numpy as np
+import pickle
+import joblib
+from sklearn.metrics import roc_curve, confusion_matrix
 
 # Initialize session state for model selection and data
 if 'model_type' not in st.session_state:
@@ -233,10 +237,41 @@ def handle_model_upload():
         try:
             # For scikit-learn models (pkl/joblib files)
             if model_file.name.endswith(('.pkl', '.joblib')):
-                model = pickle.load(model_file)
-                st.session_state.custom_model = model
-                st.success(f"Model loaded successfully!")
-                return True
+                loaded_obj = joblib.load(model_file)
+                
+                # Check if the loaded object is a valid model
+                if hasattr(loaded_obj, 'predict'):
+                    st.session_state.custom_model = loaded_obj
+                    st.success(f"Model loaded successfully!")
+                    return True
+                elif isinstance(loaded_obj, np.ndarray):
+                    # If it's a numpy array, we need to wrap it in a model-like object
+                    class SimpleModel:
+                        def __init__(self, predictions):
+                            self.predictions = predictions
+                        
+                        def predict(self, X):
+                            # Return stored predictions since we don't have the actual model
+                            return self.predictions[:len(X)]
+                        
+                        def predict_proba(self, X):
+                            # For binary classification, create fake probabilities
+                            probs = np.zeros((len(X), 2))
+                            probs[np.arange(len(X)), self.predictions.astype(int)] = 1
+                            return probs
+                        
+                        def __str__(self):
+                            return "Simple Prediction Model (based on stored predictions)"
+                        
+                        def get_params(self, deep=True):
+                            return {"type": "simple_prediction_model"}
+                    
+                    st.session_state.custom_model = SimpleModel(loaded_obj)
+                    st.warning("Loaded predictions as a simple model. Some advanced features may not be available.")
+                    return True
+                else:
+                    st.error("The loaded file does not contain a valid model object.")
+                    return False
             # For other frameworks, we'll need to implement specific loading logic
             else:
                 st.warning("Support for this model format coming soon!")
@@ -259,6 +294,103 @@ def models(model_name):
     if model_name in ["Brazilian E-Commerce Dataset", "No-show Flight Prediction Dataset", "International Football Results", "Air Quality Dataset", "20 Newsgroups Classification"]:
         model.is_coming_soon = True
     return model
+
+def validate_and_transform_features(df, model_type, target_col):
+    """Validate and transform features to match the expected model input."""
+    if model_type == "Classification":
+        expected_features = [
+            'Contract', 'Dependents', 'DeviceProtection', 'InternetService', 'MonthlyCharges',
+            'MultipleLines', 'OnlineBackup', 'OnlineSecurity', 'PaperlessBilling', 'PaymentMethod',
+            'PhoneService', 'SeniorCitizen', 'StreamingMovies', 'StreamingTV', 'TechSupport',
+            'Tenure', 'TotalCharges'
+        ]
+    elif model_type == "Regression":
+        expected_features = [
+            'area', 'bedrooms', 'bathrooms', 'stories', 'mainroad', 'guestroom', 'basement',
+            'hotwaterheating', 'airconditioning', 'parking', 'prefarea', 'furnishingstatus'
+        ]
+        # Define categorical columns and their encoding
+        categorical_features = {
+            'mainroad': {'yes': 1, 'no': 0},
+            'guestroom': {'yes': 1, 'no': 0},
+            'basement': {'yes': 1, 'no': 0},
+            'hotwaterheating': {'yes': 1, 'no': 0},
+            'airconditioning': {'yes': 1, 'no': 0},
+            'prefarea': {'yes': 1, 'no': 0},
+            'furnishingstatus': {'furnished': 2, 'semi-furnished': 1, 'unfurnished': 0}
+        }
+        # Define numeric columns
+        numeric_features = ['area', 'bedrooms', 'bathrooms', 'stories', 'parking']
+    else:
+        return df, []
+    
+    # Create a copy of the dataframe
+    df = df.copy()
+    
+    # For regression, handle data types
+    if model_type == "Regression":
+        # Convert numeric columns to float
+        for col in numeric_features:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        
+        # Handle categorical columns
+        for col, encoding in categorical_features.items():
+            if col in df.columns:
+                # Convert to string first, then lowercase
+                df[col] = df[col].astype(str).str.lower()
+                # Apply encoding
+                df[col] = df[col].map(encoding).fillna(0)
+    
+    # Check which expected features are missing
+    missing_features = [f for f in expected_features if f not in df.columns]
+    
+    # Check which features in df are not expected (excluding target column)
+    extra_features = [f for f in df.columns if f not in expected_features and f != target_col]
+    
+    if missing_features or extra_features:
+        st.warning("Feature mismatch detected. Attempting to fix...")
+        if missing_features:
+            st.info(f"Missing features that will be created with default values: {', '.join(missing_features)}")
+        if extra_features:
+            st.info(f"Extra features that will be ignored: {', '.join(extra_features)}")
+        
+        # Create a new dataframe with only the expected features
+        new_df = pd.DataFrame()
+        
+        # Copy existing matching features
+        for feature in expected_features:
+            if feature in df.columns:
+                new_df[feature] = df[feature]
+            else:
+                # Add missing features with default values
+                if feature in categorical_features:
+                    new_df[feature] = 0  # Default value for categorical features
+                else:
+                    new_df[feature] = 0  # Default value for numeric features
+        
+        # Add target column
+        new_df[target_col] = df[target_col]
+        
+        return new_df, expected_features
+    
+    return df, expected_features
+
+def load_prebuilt_model(model_type):
+    """Load a pre-built model based on model type"""
+    if model_type == "Classification":
+        model_path = 'files/Classification/customer_churn_model.pkl'
+    elif model_type == "Regression":
+        model_path = 'files/Regression/house_price/house_price_model.pkl'
+    else:
+        return None
+    
+    try:
+        model = joblib.load(model_path)
+        return model
+    except Exception as e:
+        st.error(f"Error loading pre-built model: {str(e)}")
+        return None
 
 def main():
     st.set_page_config(layout='wide', page_icon='🤖', page_title='ML Model Explorer')
@@ -397,9 +529,33 @@ def main():
                 if st.session_state.selected_model == "House Price Predictor":
                     st.write("Predict house prices based on various features like location, size, and amenities.")
                     
-                    # Load and display dataset info
-                    df = pd.read_csv('files/Regression/house_price/house_price_regression_dataset.csv')
-                    target_col = 'Price'
+                    try:
+                        # Load and combine train data
+                        X_train = pd.read_csv('files/Regression/house_price/house_price_X_train.csv')
+                        y_train = pd.read_csv('files/Regression/house_price/house_price_y_train.csv')
+                        # Load and combine test data
+                        X_test = pd.read_csv('files/Regression/house_price/house_price_X_test.csv')
+                        y_test = pd.read_csv('files/Regression/house_price/house_price_y_test.csv')
+                        
+                        # Combine features and target
+                        X = pd.concat([X_train, X_test], axis=0)
+                        y = pd.concat([y_train, y_test], axis=0)
+                        
+                        # Create a combined dataset with proper column names
+                        df = X.copy()
+                        df['price'] = y.values
+                        target_col = 'price'
+                        
+                        # Load the pre-built model
+                        st.session_state.custom_model = load_prebuilt_model("Regression")
+                        if st.session_state.custom_model is None:
+                            st.error("Failed to load pre-built regression model.")
+                            return
+                        
+                    except Exception as e:
+                        st.error(f"Error loading pre-built model: {str(e)}")
+                        df = None
+                        target_col = None
                     
                     # Show target column
                     st.markdown("#### Target Column")
@@ -484,177 +640,444 @@ def main():
         st.markdown("## Model Exploration")
         
         # Create tabs for different types of visualizations
-        viz_tab1, viz_tab2, viz_tab3 = st.tabs([
+        viz_tab1, viz_tab2, viz_tab3, viz_tab4 = st.tabs([
             "📊 Data Analysis",
             "🎯 Model Performance",
-            "🔍 Feature Importance"
+            "🔍 Feature Importance",
+            "📈 Model Diagnostics"
         ])
+        
+        # Initialize visualizer
+        if not st.session_state.is_custom:
+            if st.session_state.model_type == "Classification":
+                if st.session_state.selected_model == "Binary Customer Churn Classifier":
+                    df = pd.read_csv('files/Classification/customer_churn_classification_dataset.csv')
+                    target_col = 'Churn'
+            elif st.session_state.model_type == "Regression":
+                if st.session_state.selected_model == "House Price Predictor":
+                    try:
+                        # Load and combine train data
+                        X_train = pd.read_csv('files/Regression/house_price/house_price_X_train.csv')
+                        y_train = pd.read_csv('files/Regression/house_price/house_price_y_train.csv')
+                        # Load and combine test data
+                        X_test = pd.read_csv('files/Regression/house_price/house_price_X_test.csv')
+                        y_test = pd.read_csv('files/Regression/house_price/house_price_y_test.csv')
+                        
+                        # Combine features and target
+                        X = pd.concat([X_train, X_test], axis=0)
+                        y = pd.concat([y_train, y_test], axis=0)
+                        
+                        # Create a combined dataset
+                        df = X.copy()
+                        df['price'] = y.values
+                        target_col = 'price'
+                    except Exception as e:
+                        st.error(f"Error loading pre-built model: {str(e)}")
+                        df = None
+                        target_col = None
+            elif st.session_state.model_type == "Clustering":
+                if st.session_state.selected_model == "Customer Segmentation (Wholesale)":
+                    df = pd.read_csv('files/Clustering/wholesale_customers_clustering_dataset.csv')
+                    target_col = None
+        else:
+            df = st.session_state.uploaded_data
+            target_col = st.session_state.target_column if st.session_state.model_type != "Clustering" else None
+        
+        visualizer = ModelVisualizer(
+            data=df,
+            model=st.session_state.get('custom_model'),
+            target_col=target_col,
+            model_type=st.session_state.model_type
+        )
         
         with viz_tab1:
             st.markdown("### Data Analysis")
             
-            # Get the appropriate data based on model type
-            if not st.session_state.is_custom:
-                if st.session_state.model_type == "Classification":
-                    if st.session_state.selected_model == "Binary Customer Churn Classifier":
-                        df = pd.read_csv('files/Classification/customer_churn_classification_dataset.csv')
-                        target_col = 'Churn'
-                elif st.session_state.model_type == "Regression":
-                    if st.session_state.selected_model == "House Price Predictor":
-                        df = pd.read_csv('files/Regression/house_price/house_price_regression_dataset.csv')
-                        target_col = 'Price'
-                elif st.session_state.model_type == "Clustering":
-                    if st.session_state.selected_model == "Customer Segmentation (Wholesale)":
-                        df = pd.read_csv('files/Clustering/wholesale_customers_clustering_dataset.csv')
-                        target_col = None
-            else:
-                df = st.session_state.uploaded_data
-                target_col = st.session_state.target_column if st.session_state.model_type != "Clustering" else None
-            
-            # Data Analysis Visualizations
             if df is not None:
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    # Plot Type Selection
-                    if 'plot_type' not in st.session_state:
-                        st.session_state.plot_type = "Distribution"
+                try:
+                    col1, col2 = st.columns(2)
                     
-                    plot_type = st.selectbox(
-                        "Select Plot Type",
-                        ["Distribution", "Box Plot", "Correlation", "Scatter Plot"],
-                        key="viz_plot_type",  
-                        on_change=None  
-                    )
-                    st.session_state.plot_type = plot_type
-                
-                with col2:
-                    # Feature Selection for Analysis
-                    numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
-                    if target_col in numeric_cols:
-                        numeric_cols.remove(target_col)
+                    with col1:
+                        plot_type = st.selectbox(
+                            "Select Plot Type",
+                            ["Distribution", "Box Plot", "Violin Plot", "Correlation", "Scatter Plot", 
+                             "Missing Values", "Pair Plot"],
+                            key="viz_plot_type"
+                        )
                     
-                    if 'selected_feature' not in st.session_state:
-                        st.session_state.selected_feature = numeric_cols[0] if numeric_cols else None
+                    with col2:
+                        # Feature Selection for Analysis
+                        numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+                        if target_col in numeric_cols:
+                            numeric_cols.remove(target_col)
+                        
+                        if len(numeric_cols) == 0:
+                            st.warning("No numeric columns found in the dataset for analysis.")
+                        else:
+                            if plot_type in ["Scatter Plot", "Pair Plot"]:
+                                selected_features = st.multiselect(
+                                    "Select Features to Analyze",
+                                    numeric_cols,
+                                    default=numeric_cols[:2] if len(numeric_cols) > 1 else numeric_cols,
+                                    key="viz_feature_selector"
+                                )
+                            else:
+                                selected_feature = st.selectbox(
+                                    "Select Feature to Analyze",
+                                    numeric_cols,
+                                    key="viz_feature_selector"
+                                )
                     
-                    selected_feature = st.selectbox(
-                        "Select Feature to Analyze",
-                        numeric_cols,
-                        key="viz_feature_selector",  
-                        on_change=None  
-                    )
-                    st.session_state.selected_feature = selected_feature
-                
-                # Create visualization based on selection
-                if plot_type == "Distribution":
-                    fig = px.histogram(df, x=selected_feature, title=f"Distribution of {selected_feature}")
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                elif plot_type == "Box Plot":
-                    fig = px.box(df, y=selected_feature, title=f"Box Plot of {selected_feature}")
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                elif plot_type == "Correlation":
-                    corr_matrix = df[numeric_cols].corr()
-                    fig = px.imshow(corr_matrix, 
-                                  title="Feature Correlation Matrix",
-                                  color_continuous_scale='RdBu')
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                elif plot_type == "Scatter Plot" and target_col and target_col in df.columns:
-                    fig = px.scatter(df, x=selected_feature, y=target_col,
-                                   title=f"{selected_feature} vs {target_col}")
-                    st.plotly_chart(fig, use_container_width=True)
+                    # Create visualization based on selection
+                    if len(numeric_cols) > 0:
+                        try:
+                            if plot_type == "Distribution":
+                                fig = visualizer.create_distribution_plot(selected_feature)
+                            elif plot_type == "Box Plot":
+                                fig = visualizer.create_box_plot(selected_feature)
+                            elif plot_type == "Violin Plot":
+                                fig = visualizer.create_violin_plot(selected_feature)
+                            elif plot_type == "Correlation":
+                                fig = visualizer.create_correlation_matrix()
+                            elif plot_type == "Scatter Plot" and len(selected_features) >= 2:
+                                fig = visualizer.create_scatter_plot(selected_features[0], selected_features[1])
+                            elif plot_type == "Missing Values":
+                                fig = visualizer.create_missing_values_heatmap()
+                            elif plot_type == "Pair Plot" and len(selected_features) >= 2:
+                                if len(selected_features) > 5:
+                                    st.warning("Too many features selected. Limiting to first 5 features for better visualization.")
+                                    selected_features = selected_features[:5]
+                                fig = visualizer.create_pair_plot(selected_features)
+                            else:
+                                fig = None
+                                if plot_type in ["Scatter Plot", "Pair Plot"] and len(selected_features) < 2:
+                                    st.warning("Please select at least 2 features for this plot type.")
+                            
+                            if fig is not None:
+                                st.plotly_chart(fig, use_container_width=True)
+                        except Exception as e:
+                            st.warning(f"Unable to generate {plot_type.lower()} plot.")
+                            st.error(f"Error: {str(e)}")
+                except Exception as e:
+                    st.warning("Error processing the dataset for visualization.")
+                    st.error(f"Error: {str(e)}")
+            else:
+                st.info("Please upload a dataset to start the analysis.")
         
         with viz_tab2:
             st.markdown("### Model Performance")
             
-            if st.session_state.model_type != "Clustering":
-                # Classification Metrics
-                if st.session_state.model_type == "Classification":
-                    st.markdown("#### Classification Metrics")
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Accuracy", "0.85")
-                    with col2:
-                        st.metric("Precision", "0.83")
-                    with col3:
-                        st.metric("Recall", "0.87")
-                    
-                    # ROC Curve using plotly
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines', name='Random'))
-                    fig.add_trace(go.Scatter(x=[0, 0.2, 0.5, 0.8, 1], 
-                                          y=[0, 0.4, 0.7, 0.9, 1], 
-                                          mode='lines', 
-                                          name='Model'))
-                    fig.update_layout(title='ROC Curve',
-                                    xaxis_title='False Positive Rate',
-                                    yaxis_title='True Positive Rate')
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                # Regression Metrics
-                elif st.session_state.model_type == "Regression":
-                    st.markdown("#### Regression Metrics")
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("R² Score", "0.82")
-                    with col2:
-                        st.metric("MAE", "0.15")
-                    with col3:
-                        st.metric("RMSE", "0.23")
-                    
-                    # Residual Plot
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=[0, 1, 2, 3], 
-                                          y=[0.1, -0.1, 0.05, -0.05], 
-                                          mode='markers',
-                                          name='Residuals'))
-                    fig.update_layout(title='Residual Plot',
-                                    xaxis_title='Predicted Values',
-                                    yaxis_title='Residuals')
-                    st.plotly_chart(fig, use_container_width=True)
+            if st.session_state.model_type == "Classification":
+                if st.session_state.get('custom_model') is not None and df is not None and target_col in df.columns:
+                    try:
+                        # Load the correct model for classification if using pre-built
+                        if not st.session_state.is_custom:
+                            st.session_state.custom_model = load_prebuilt_model("Classification")
+                            if st.session_state.custom_model is None:
+                                st.error("Failed to load pre-built classification model.")
+                                return
+                        
+                        # Transform features to match model expectations
+                        df_transformed, feature_cols = validate_and_transform_features(df, "Classification", target_col)
+                        
+                        if len(feature_cols) == 0:
+                            st.error("No valid features found for the model.")
+                            return
+                        
+                        X = df_transformed[feature_cols]
+                        y = df_transformed[target_col]
+                        
+                        # Make predictions
+                        y_pred = st.session_state.custom_model.predict(X)
+                        y_pred_proba = st.session_state.custom_model.predict_proba(X)[:, 1]
+                        
+                        # Calculate and display metrics
+                        from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+                        
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("Accuracy", f"{accuracy_score(y, y_pred):.3f}")
+                        with col2:
+                            st.metric("Precision", f"{precision_score(y, y_pred):.3f}")
+                        with col3:
+                            st.metric("Recall", f"{recall_score(y, y_pred):.3f}")
+                        with col4:
+                            st.metric("F1 Score", f"{f1_score(y, y_pred):.3f}")
+                        
+                        # ROC Curve
+                        fpr, tpr, _ = roc_curve(y, y_pred_proba)
+                        fig = px.line(x=fpr, y=tpr, 
+                                    title='ROC Curve',
+                                    labels={'x': 'False Positive Rate', 'y': 'True Positive Rate'})
+                        fig.add_shape(type='line', line=dict(dash='dash'),
+                                    x0=0, x1=1, y0=0, y1=1)
+                        fig.update_layout(template="plotly_dark")
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Confusion Matrix
+                        cm = confusion_matrix(y, y_pred)
+                        fig = px.imshow(cm,
+                                      labels=dict(x="Predicted", y="Actual"),
+                                      title="Confusion Matrix",
+                                      color_continuous_scale="Viridis")
+                        fig.update_layout(template="plotly_dark")
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                    except Exception as e:
+                        st.warning("Unable to generate classification performance metrics and plots.")
+                        st.error(f"Error: {str(e)}")
+                        st.error("Debug info:")
+                        st.write(f"Data shape: {df.shape if df is not None else None}")
+                        st.write(f"Target column: {target_col}")
+                        st.write(f"Feature columns: {feature_cols if 'feature_cols' in locals() else None}")
+                else:
+                    if not st.session_state.get('custom_model'):
+                        st.error("No model available. Please ensure a model is loaded.")
+                    elif df is None:
+                        st.error("No dataset available. Please ensure data is loaded.")
+                    elif target_col not in df.columns:
+                        st.error(f"Target column '{target_col}' not found in dataset.")
             
-            # Clustering Performance
-            else:
-                st.markdown("#### Clustering Metrics")
+            elif st.session_state.model_type == "Regression":
+                # Get the appropriate data based on model type
+                if not st.session_state.is_custom:
+                    if st.session_state.selected_model == "House Price Predictor":
+                        try:
+                            # Load and combine train data
+                            X_train = pd.read_csv('files/Regression/house_price/house_price_X_train.csv')
+                            y_train = pd.read_csv('files/Regression/house_price/house_price_y_train.csv')
+                            # Load and combine test data
+                            X_test = pd.read_csv('files/Regression/house_price/house_price_X_test.csv')
+                            y_test = pd.read_csv('files/Regression/house_price/house_price_y_test.csv')
+                            
+                            # Combine features and target
+                            X = pd.concat([X_train, X_test], axis=0)
+                            y = pd.concat([y_train, y_test], axis=0)
+                            
+                            # Create a combined dataset with proper column names
+                            df = X.copy()
+                            df['price'] = y.values
+                            target_col = 'price'
+                            
+                            # Load the pre-built model
+                            st.session_state.custom_model = load_prebuilt_model("Regression")
+                            if st.session_state.custom_model is None:
+                                st.error("Failed to load pre-built regression model.")
+                                return
+                        except Exception as e:
+                            st.error(f"Error loading pre-built model: {str(e)}")
+                            df = None
+                            target_col = None
+                else:
+                    df = st.session_state.uploaded_data
+                    target_col = st.session_state.target_column
+                
+                # Calculate regression metrics if we have a model and data
+                if st.session_state.get('custom_model') is not None and df is not None and target_col in df.columns:
+                    try:
+                        # Transform features to match model expectations
+                        df_transformed, feature_cols = validate_and_transform_features(df, "Regression", target_col)
+                        
+                        if len(feature_cols) == 0:
+                            st.error("No valid features found for the model.")
+                            return
+                        
+                        X = df_transformed[feature_cols]
+                        y = df_transformed[target_col]
+                        
+                        # Ensure X and y have the same number of samples
+                        if len(X) != len(y):
+                            st.error(f"Mismatch in number of samples: X has {len(X)} samples, y has {len(y)} samples")
+                            return
+                        
+                        from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error, explained_variance_score
+                        import numpy as np
+                        
+                        # Make predictions
+                        y_pred = st.session_state.custom_model.predict(X)
+                        
+                        # Calculate metrics
+                        r2 = r2_score(y, y_pred)
+                        mae = mean_absolute_error(y, y_pred)
+                        mse = mean_squared_error(y, y_pred)
+                        rmse = np.sqrt(mse)
+                        explained_var = explained_variance_score(y, y_pred)
+                        mape = np.mean(np.abs((y - y_pred) / y)) * 100
+                        
+                        # Display metrics in two rows
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("R² Score", f"{r2:.3f}")
+                            st.metric("MAE", f"{mae:.3f}")
+                        with col2:
+                            st.metric("RMSE", f"{rmse:.3f}")
+                            st.metric("MSE", f"{mse:.3f}")
+                        with col3:
+                            st.metric("Explained Variance", f"{explained_var:.3f}")
+                            st.metric("MAPE (%)", f"{mape:.1f}")
+                        
+                        # Add detailed visualizations
+                        st.markdown("#### Regression Analysis Plots")
+                        
+                        tab1, tab2, tab3 = st.tabs(["Predictions", "Residuals", "Error Distribution"])
+                        
+                        with tab1:
+                            # Actual vs Predicted Plot
+                            fig = visualizer.create_actual_vs_predicted(y, y_pred)
+                            if fig is not None:
+                                st.plotly_chart(fig, use_container_width=True)
+                        
+                        with tab2:
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                # Residuals Plot
+                                fig = visualizer.create_residuals_plot(y, y_pred)
+                                if fig is not None:
+                                    st.plotly_chart(fig, use_container_width=True)
+                            
+                            with col2:
+                                # Residuals vs Feature Plot
+                                feature = st.selectbox(
+                                    "Select feature for residuals analysis",
+                                    feature_cols,
+                                    key="residuals_feature"
+                                )
+                                fig = px.scatter(
+                                    x=X[feature],
+                                    y=y - y_pred,
+                                    labels={"x": feature, "y": "Residuals"},
+                                    title=f"Residuals vs {feature}"
+                                )
+                                fig.add_hline(y=0, line_dash="dash")
+                                fig.update_layout(template="plotly_dark")
+                                st.plotly_chart(fig, use_container_width=True)
+                        
+                        with tab3:
+                            # Error Distribution Plot
+                            errors = y - y_pred
+                            fig = px.histogram(
+                                x=errors,
+                                nbins=30,
+                                title="Distribution of Prediction Errors",
+                                labels={"x": "Prediction Error"}
+                            )
+                            fig.add_vline(x=0, line_dash="dash")
+                            fig.update_layout(template="plotly_dark")
+                            st.plotly_chart(fig, use_container_width=True)
+                            
+                            # Error Statistics
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Mean Error", f"{np.mean(errors):.3f}")
+                            with col2:
+                                st.metric("Std Error", f"{np.std(errors):.3f}")
+                            with col3:
+                                st.metric("Median Error", f"{np.median(errors):.3f}")
+                            
+                    except Exception as e:
+                        st.warning("Unable to generate regression performance metrics and plots.")
+                        st.error(f"Error: {str(e)}")
+                        st.error("Debug info:")
+                        st.write(f"Data shape: {df.shape if df is not None else None}")
+                        st.write(f"Target column: {target_col}")
+                        st.write(f"Feature columns: {feature_cols if 'feature_cols' in locals() else None}")
+                else:
+                    if st.session_state.get('custom_model') is None:
+                        st.error("No model available. Please ensure a model is loaded.")
+                    elif df is None:
+                        st.error("No dataset available. Please ensure data is loaded.")
+                    elif target_col not in df.columns:
+                        st.error(f"Target column '{target_col}' not found in dataset.")
+            
+            elif st.session_state.model_type == "Clustering":
                 col1, col2 = st.columns(2)
                 with col1:
                     st.metric("Silhouette Score", "0.68")
                 with col2:
                     st.metric("Calinski-Harabasz Score", "156.32")
                 
-                # Cluster Visualization
-                fig = go.Figure()
-                # Add sample cluster visualization
-                st.plotly_chart(fig, use_container_width=True)
+                # Add Cluster Visualization
+                if st.session_state.get('custom_model') is not None and df is not None:
+                    try:
+                        numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns
+                        selected_features = st.multiselect(
+                            "Select Features for Cluster Visualization",
+                            numeric_cols,
+                            default=list(numeric_cols[:2]) if len(numeric_cols) >= 2 else []
+                        )
+                        
+                        if len(selected_features) >= 2:
+                            X = df[selected_features]
+                            labels = st.session_state.custom_model.predict(X)
+                            fig = visualizer.create_cluster_plot(selected_features, labels)
+                            if fig is not None:
+                                st.plotly_chart(fig, use_container_width=True)
+                    except Exception as e:
+                        st.warning("Unable to generate clustering visualization. Please ensure your model is properly trained and compatible with the data.")
+                        st.error(f"Error: {str(e)}")
         
         with viz_tab3:
             st.markdown("### Feature Importance")
             
             if st.session_state.model_type != "Clustering":
-                # Feature importance plot
-                importances = {
-                    'Feature 1': 0.3,
-                    'Feature 2': 0.25,
-                    'Feature 3': 0.2,
-                    'Feature 4': 0.15,
-                    'Feature 5': 0.1
-                }
-                
-                fig = px.bar(
-                    x=list(importances.keys()),
-                    y=list(importances.values()),
-                    title="Feature Importance"
-                )
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # SHAP Values
-                st.markdown("#### SHAP Values")
-                st.info("SHAP values show how each feature contributes to the model's predictions")
+                if st.session_state.get('custom_model') is not None and df is not None and target_col in df.columns:
+                    try:
+                        # Transform features to match model expectations
+                        df_transformed, feature_cols = validate_and_transform_features(df, st.session_state.model_type, target_col)
+                        
+                        if len(feature_cols) == 0:
+                            st.error("No valid features found for the model.")
+                            return
+                        
+                        # Get feature importance if available
+                        if hasattr(st.session_state.custom_model, 'feature_importances_'):
+                            X = df_transformed[feature_cols]
+                            feature_names = X.columns
+                            importances = st.session_state.custom_model.feature_importances_
+                            
+                            fig = visualizer.create_feature_importance_plot(importances, feature_names)
+                            st.plotly_chart(fig, use_container_width=True)
+                            
+                            # Add SHAP values
+                            st.markdown("#### SHAP Values")
+                            if st.button("Calculate SHAP Values"):
+                                with st.spinner("Calculating SHAP values..."):
+                                    try:
+                                        fig = visualizer.create_shap_summary_plot()
+                                        if fig is not None:
+                                            st.pyplot(fig)
+                                    except Exception as e:
+                                        st.warning("Unable to calculate SHAP values. This might be due to model incompatibility.")
+                                        st.error(f"Error: {str(e)}")
+                        else:
+                            st.info("This model does not provide direct feature importance scores. Consider using SHAP values for feature importance analysis.")
+                    except Exception as e:
+                        st.warning("Unable to generate feature importance visualization.")
+                        st.error(f"Error: {str(e)}")
+                else:
+                    st.info("Please upload a model and dataset to view feature importance analysis.")
             else:
-                st.markdown("#### Cluster Feature Analysis")
-                # Add cluster-specific feature analysis
+                st.info("Feature importance analysis is not available for clustering models.")
+        
+        with viz_tab4:
+            st.markdown("### Model Diagnostics")
+            
+            if st.session_state.get('custom_model') is not None:
+                try:
+                    st.markdown("#### Model Information")
+                    st.code(str(st.session_state.custom_model))
+                    
+                    # Add model parameters
+                    st.markdown("#### Model Parameters")
+                    if hasattr(st.session_state.custom_model, 'get_params'):
+                        st.json(st.session_state.custom_model.get_params())
+                    else:
+                        st.info("Model parameters are not available for this model type.")
+                except Exception as e:
+                    st.warning("Unable to display model diagnostics.")
+                    st.error(f"Error: {str(e)}")
+            else:
+                st.info("Please upload a model to view model diagnostics.")
 
 if __name__ == '__main__':
     main()
