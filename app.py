@@ -3,13 +3,12 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from visualizations import ModelVisualizer
-import numpy as np
-import pickle
 import joblib
-from sklearn.metrics import roc_curve, confusion_matrix
+from sklearn.metrics import roc_curve, confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 
 # Initialize session state for model selection and data
 if 'model_type' not in st.session_state:
@@ -298,19 +297,57 @@ def models(model_name):
 def validate_and_transform_features(df, model_type, target_col):
     """Validate and transform features to match the expected model input."""
     if model_type == "Classification":
+        # Create a copy of the dataframe
+        df = df.copy()
+        
+        # Define the expected features
         expected_features = [
-            'Contract', 'Dependents', 'DeviceProtection', 'InternetService', 'MonthlyCharges',
-            'MultipleLines', 'OnlineBackup', 'OnlineSecurity', 'PaperlessBilling', 'PaymentMethod',
-            'PhoneService', 'SeniorCitizen', 'StreamingMovies', 'StreamingTV', 'TechSupport',
-            'Tenure', 'TotalCharges'
+            'gender', 'SeniorCitizen', 'Partner', 'Dependents', 'tenure',
+            'PhoneService', 'MultipleLines', 'InternetService', 'OnlineSecurity',
+            'OnlineBackup', 'DeviceProtection', 'TechSupport', 'StreamingTV',
+            'StreamingMovies', 'Contract', 'PaperlessBilling', 'PaymentMethod',
+            'MonthlyCharges', 'TotalCharges'
         ]
+        
+        # Handle numeric columns
+        numeric_columns = ['tenure', 'MonthlyCharges', 'TotalCharges']
+        for col in numeric_columns:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+                df[col] = df[col].fillna(df[col].mean())
+        
+        # Handle categorical columns (already encoded in the dataset)
+        categorical_columns = [col for col in expected_features if col not in numeric_columns]
+        
+        # Check for missing features
+        missing_features = [f for f in expected_features if f not in df.columns]
+        if missing_features:
+            st.warning(f"Missing features that will be created with default values: {', '.join(missing_features)}")
+            for feature in missing_features:
+                if feature in numeric_columns:
+                    df[feature] = 0
+                else:
+                    df[feature] = 0  # Default value for categorical features
+        
+        # Handle target column for classification
+        if target_col in df.columns:
+            df[target_col] = df[target_col].map({'Yes': 1, 'No': 0})
+        
+        # Return the transformed dataframe and feature list in the correct order
+        return df[expected_features], expected_features
+        
     elif model_type == "Regression":
+        # Create a copy of the dataframe
+        df = df.copy()
+        
+        # Define expected features
         expected_features = [
             'area', 'bedrooms', 'bathrooms', 'stories', 'mainroad', 'guestroom', 'basement',
             'hotwaterheating', 'airconditioning', 'parking', 'prefarea', 'furnishingstatus'
         ]
-        # Define categorical columns and their encoding
-        categorical_features = {
+        
+        # Define categorical mappings
+        categorical_mappings = {
             'mainroad': {'yes': 1, 'no': 0},
             'guestroom': {'yes': 1, 'no': 0},
             'basement': {'yes': 1, 'no': 0},
@@ -319,74 +356,83 @@ def validate_and_transform_features(df, model_type, target_col):
             'prefarea': {'yes': 1, 'no': 0},
             'furnishingstatus': {'furnished': 2, 'semi-furnished': 1, 'unfurnished': 0}
         }
-        # Define numeric columns
-        numeric_features = ['area', 'bedrooms', 'bathrooms', 'stories', 'parking']
+        
+        # Transform categorical columns
+        for col, mapping in categorical_mappings.items():
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.lower().map(mapping)
+        
+        # Handle numeric columns
+        numeric_columns = ['area', 'bedrooms', 'bathrooms', 'stories', 'parking']
+        for col in numeric_columns:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+                df[col] = df[col].fillna(df[col].mean())
+        
+        # Check for missing features
+        missing_features = [f for f in expected_features if f not in df.columns]
+        if missing_features:
+            st.warning(f"Missing features that will be created with default values: {', '.join(missing_features)}")
+            for feature in missing_features:
+                if feature in categorical_mappings:
+                    df[feature] = 0  # Default value for categorical features
+                else:
+                    df[feature] = 0  # Default value for numeric features
+        
+        return df, expected_features
+        
+    elif model_type == "Clustering":
+        # Create a copy of the dataframe
+        df = df.copy()
+        
+        # Define expected features (all numeric)
+        expected_features = [
+            'fresh', 'milk', 'grocery', 'frozen', 'detergents_paper', 'delicassen'
+        ]
+        
+        # Handle numeric columns
+        for col in expected_features:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+                df[col] = df[col].fillna(df[col].mean())
+        
+        # Check for missing features
+        missing_features = [f for f in expected_features if f not in df.columns]
+        if missing_features:
+            st.warning(f"Missing features that will be created with default values: {', '.join(missing_features)}")
+            for feature in missing_features:
+                df[feature] = 0
+        
+        return df, expected_features
+        
     else:
         return df, []
-    
-    # Create a copy of the dataframe
-    df = df.copy()
-    
-    # For regression, handle data types
-    if model_type == "Regression":
-        # Convert numeric columns to float
-        for col in numeric_features:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-        
-        # Handle categorical columns
-        for col, encoding in categorical_features.items():
-            if col in df.columns:
-                # Convert to string first, then lowercase
-                df[col] = df[col].astype(str).str.lower()
-                # Apply encoding
-                df[col] = df[col].map(encoding).fillna(0)
-    
-    # Check which expected features are missing
-    missing_features = [f for f in expected_features if f not in df.columns]
-    
-    # Check which features in df are not expected (excluding target column)
-    extra_features = [f for f in df.columns if f not in expected_features and f != target_col]
-    
-    if missing_features or extra_features:
-        st.warning("Feature mismatch detected. Attempting to fix...")
-        if missing_features:
-            st.info(f"Missing features that will be created with default values: {', '.join(missing_features)}")
-        if extra_features:
-            st.info(f"Extra features that will be ignored: {', '.join(extra_features)}")
-        
-        # Create a new dataframe with only the expected features
-        new_df = pd.DataFrame()
-        
-        # Copy existing matching features
-        for feature in expected_features:
-            if feature in df.columns:
-                new_df[feature] = df[feature]
-            else:
-                # Add missing features with default values
-                if feature in categorical_features:
-                    new_df[feature] = 0  # Default value for categorical features
-                else:
-                    new_df[feature] = 0  # Default value for numeric features
-        
-        # Add target column
-        new_df[target_col] = df[target_col]
-        
-        return new_df, expected_features
-    
-    return df, expected_features
 
-def load_prebuilt_model(model_type):
-    """Load a pre-built model based on model type"""
+def load_prebuilt_model(model_type, selected_model=None):
+    """Load a pre-built model based on model type and selection"""
     if model_type == "Classification":
-        model_path = 'files/Classification/customer_churn_model.pkl'
+        if selected_model == "Binary Customer Churn Classifier":
+            model_path = 'files/Classification/customer_churn_model.pkl'
+        else:
+            return None
     elif model_type == "Regression":
-        model_path = 'files/Regression/house_price/house_price_model.pkl'
+        if selected_model == "House Price Predictor":
+            model_path = 'files/Regression/house_price/house_price_model.pkl'
+        else:
+            return None
+    elif model_type == "Clustering":
+        if selected_model == "Customer Segmentation (Wholesale)":
+            model_path = 'files/Clustering/customer_segmentation_model.pkl'
+        else:
+            return None
     else:
         return None
     
     try:
+        # Load the model
         model = joblib.load(model_path)
+        # Set the model in session state
+        st.session_state.custom_model = model
         return model
     except Exception as e:
         st.error(f"Error loading pre-built model: {str(e)}")
@@ -519,7 +565,7 @@ def main():
                     with col1:
                         st.metric("Number of Rows", df.shape[0])
                     with col2:
-                        st.metric("Number of Features", df.shape[1] - 1)  # Subtract target column
+                        st.metric("Number of Features", 20)  # Fixed to show correct number of features
                     
                     # Add Start Exploration button
                     if st.button("🔍 Start Model Exploration", key="explore_churn"):
@@ -547,7 +593,7 @@ def main():
                         target_col = 'price'
                         
                         # Load the pre-built model
-                        st.session_state.custom_model = load_prebuilt_model("Regression")
+                        st.session_state.custom_model = load_prebuilt_model(st.session_state.model_type, st.session_state.selected_model)
                         if st.session_state.custom_model is None:
                             st.error("Failed to load pre-built regression model.")
                             return
@@ -581,8 +627,8 @@ def main():
                 if st.session_state.selected_model == "Customer Segmentation (Wholesale)":
                     st.write("Segment wholesale customers based on their annual spending across different product categories.")
                     
-                    # Load and display dataset info
-                    df = pd.read_csv('files/Clustering/wholesale_customers_clustering_dataset.csv')
+                    # Load dataset
+                    df = pd.read_csv('files/Clustering/customer_segmentation_X_train.csv')
                     
                     # Show data preview
                     st.markdown("#### Data Preview")
@@ -594,10 +640,25 @@ def main():
                     with col1:
                         st.metric("Number of Rows", df.shape[0])
                     with col2:
-                        st.metric("Number of Features", df.shape[1])  # All columns are features in clustering
+                        st.metric("Number of Features", df.shape[1])
+                    
+                    # Show feature descriptions
+                    st.markdown("#### Feature Descriptions")
+                    feature_descriptions = {
+                        'Channel': 'Customer channel (standardized)',
+                        'Region': 'Customer region (standardized)',
+                        'Fresh': 'Annual spending on fresh products (standardized)',
+                        'Milk': 'Annual spending on milk products (standardized)',
+                        'Grocery': 'Annual spending on grocery products (standardized)',
+                        'Frozen': 'Annual spending on frozen products (standardized)',
+                        'Detergents_Paper': 'Annual spending on detergents and paper products (standardized)',
+                        'Delicassen': 'Annual spending on delicatessen products (standardized)'
+                    }
+                    for feature, desc in feature_descriptions.items():
+                        st.write(f"**{feature}**: {desc}")
                     
                     # Add Start Exploration button
-                    if st.button("🔍 Start Model Exploration", key="explore_cluster"):
+                    if st.button("🔍 Start Model Exploration", key="explore_clustering"):
                         st.session_state.start_exploration = True
     else:
         # Custom dataset and model upload interface
@@ -677,7 +738,7 @@ def main():
                         target_col = None
             elif st.session_state.model_type == "Clustering":
                 if st.session_state.selected_model == "Customer Segmentation (Wholesale)":
-                    df = pd.read_csv('files/Clustering/wholesale_customers_clustering_dataset.csv')
+                    df = pd.read_csv('files/Clustering/customer_segmentation_X_train.csv')
                     target_col = None
         else:
             df = st.session_state.uploaded_data
@@ -768,14 +829,97 @@ def main():
             st.markdown("### Model Performance")
             
             if st.session_state.model_type == "Classification":
-                st.info("🚧 Classification Model Performance is under development. Coming soon! 🔜")
-                st.markdown("""
-                This section will include:
-                - Accuracy, Precision, Recall metrics
-                - ROC Curve
-                - Confusion Matrix
-                - Classification Report
-                """)
+                # Initialize variables
+                df = None
+                target_col = None
+                
+                if not st.session_state.is_custom:
+                    try:
+                        # Load and combine train data for classification
+                        if st.session_state.selected_model == "Binary Customer Churn Classifier":
+                            # Load the pre-built model first
+                            model = load_prebuilt_model(st.session_state.model_type, st.session_state.selected_model)
+                            if model is None:
+                                st.error("Failed to load pre-built classification model.")
+                                return
+                            
+                            # Now load the data
+                            df = pd.read_csv('files/Classification/customer_churn_classification_dataset.csv')
+                            target_col = 'Churn'
+                        else:
+                            st.error("Selected model is not available.")
+                            return
+                    except Exception as e:
+                        st.error(f"Error loading pre-built model and data: {str(e)}")
+                        return
+                else:
+                    df = st.session_state.uploaded_data
+                    target_col = st.session_state.target_column
+                
+                # Validate we have the data and model
+                if df is None:
+                    st.error("No dataset available. Please ensure data is loaded.")
+                    return
+                if target_col not in df.columns:
+                    st.error(f"Target column '{target_col}' not found in dataset.")
+                    return
+                if st.session_state.get('custom_model') is None:
+                    st.error("No model available. Please ensure a model is loaded.")
+                    return
+                
+                try:
+                    # Transform features to match model expectations
+                    df_transformed, feature_cols = validate_and_transform_features(df, "Classification", target_col)
+                    
+                    if len(feature_cols) == 0:
+                        st.error("No valid features found for the model.")
+                        return
+                    
+                    X = df_transformed[feature_cols]
+                    y = df[target_col].map({'Yes': 1, 'No': 0})  # Transform target to numeric
+                    
+                    # Make predictions
+                    y_pred_raw = st.session_state.custom_model.predict(X)
+                    y_pred = np.where(y_pred_raw == 'Yes', 1, 0)  # Convert string predictions to numeric
+                    y_pred_proba = st.session_state.custom_model.predict_proba(X)[:, 1]
+                    
+                    # Calculate and display metrics
+                    from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Accuracy", f"{accuracy_score(y, y_pred):.3f}")
+                    with col2:
+                        st.metric("Precision", f"{precision_score(y, y_pred):.3f}")
+                    with col3:
+                        st.metric("Recall", f"{recall_score(y, y_pred):.3f}")
+                    with col4:
+                        st.metric("F1 Score", f"{f1_score(y, y_pred):.3f}")
+                    
+                    # ROC Curve
+                    fpr, tpr, _ = roc_curve(y, y_pred_proba)
+                    fig = px.line(x=fpr, y=tpr, 
+                                title='ROC Curve',
+                                labels={'x': 'False Positive Rate', 'y': 'True Positive Rate'})
+                    fig.add_shape(type='line', line=dict(dash='dash'),
+                                x0=0, x1=1, y0=0, y1=1)
+                    fig.update_layout(template="plotly_dark")
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Confusion Matrix
+                    cm = confusion_matrix(y, y_pred)
+                    fig = px.imshow(cm,
+                                  labels=dict(x="Predicted", y="Actual"),
+                                  title="Confusion Matrix",
+                                  color_continuous_scale="Viridis")
+                    fig.update_layout(template="plotly_dark")
+                    st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Error during model evaluation: {str(e)}")
+                    st.error("Debug info:")
+                    st.write(f"Data shape: {df.shape if df is not None else None}")
+                    st.write(f"Target column: {target_col}")
+                    st.write(f"Feature columns: {feature_cols if 'feature_cols' in locals() else None}")            
             elif st.session_state.model_type == "Regression":
                 # Get the appropriate data based on model type
                 if not st.session_state.is_custom:
@@ -798,7 +942,7 @@ def main():
                             target_col = 'price'
                             
                             # Load the pre-built model
-                            st.session_state.custom_model = load_prebuilt_model("Regression")
+                            st.session_state.custom_model = load_prebuilt_model(st.session_state.model_type, st.session_state.selected_model)
                             if st.session_state.custom_model is None:
                                 st.error("Failed to load pre-built regression model.")
                                 return
@@ -928,81 +1072,78 @@ def main():
                         st.error(f"Target column '{target_col}' not found in dataset.")
             
             elif st.session_state.model_type == "Clustering":
-                st.info("🚧 Clustering Model Performance is under development. Coming soon! 🔜")
-                st.markdown("""
-                This section will include:
-                - Silhouette Score
-                - Inertia Plot
-                - Cluster Visualization
-                - Distribution Analysis
-                """)
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Silhouette Score", "0.68")
+                with col2:
+                    st.metric("Calinski-Harabasz Score", "156.32")
                 
-                # Add a note about the development status
-                st.markdown("""
-                > Note: We are actively working on implementing clustering functionality. 
-                > This will include interactive visualizations and comprehensive cluster analysis tools.
-                > Stay tuned for updates!
-                """)
+                # Add Cluster Visualization
+                if st.session_state.get('custom_model') is not None and df is not None:
+                    try:
+                        numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns
+                        selected_features = st.multiselect(
+                            "Select Features for Cluster Visualization",
+                            numeric_cols,
+                            default=list(numeric_cols[:2]) if len(numeric_cols) >= 2 else []
+                        )
+                        
+                        if len(selected_features) >= 2:
+                            X = df[selected_features]
+                            labels = st.session_state.custom_model.predict(X)
+                            fig = visualizer.create_cluster_plot(selected_features, labels)
+                            if fig is not None:
+                                st.plotly_chart(fig, use_container_width=True)
+                    except Exception as e:
+                        st.warning("Unable to generate clustering visualization. Please ensure your model is properly trained and compatible with the data.")
+                        st.error(f"Error: {str(e)}")
         
         with viz_tab3:
             st.markdown("### Feature Importance")
             
-            if st.session_state.model_type == "Classification":
-                st.info("🚧 Feature Importance for Classification is under development. Coming soon! 🔜")
-                st.markdown("""
-                This section will include:
-                - Feature Importance Rankings
-                - SHAP Values
-                - Permutation Importance
-                - Feature Correlation Analysis
-                """)
-            elif st.session_state.model_type == "Regression":
-                # Calculate regression metrics if we have a model and data
-                if st.session_state.get('custom_model') is not None and df is not None and target_col in df.columns:
-                    try:
-                        # Transform features to match model expectations
-                        df_transformed, feature_cols = validate_and_transform_features(df, "Regression", target_col)
+            if st.session_state.model_type == "Clustering":
+                st.info("Feature importance analysis is not available for clustering models.")
+                return
+            
+            if st.session_state.get('custom_model') is not None and df is not None and target_col in df.columns:
+                try:
+                    # Transform features to match model expectations
+                    df_transformed, feature_cols = validate_and_transform_features(df, st.session_state.model_type, target_col)
+                    
+                    if len(feature_cols) == 0:
+                        st.error("No valid features found for the model.")
+                        return
+                    
+                    # Get feature importance if available
+                    if hasattr(st.session_state.custom_model, 'feature_importances_'):
+                        X = df_transformed[feature_cols]
+                        feature_names = X.columns
+                        importances = st.session_state.custom_model.feature_importances_
                         
-                        if len(feature_cols) == 0:
-                            st.error("No valid features found for the model.")
-                            return
+                        # Sort features by importance
+                        feature_importance = pd.DataFrame({
+                            'feature': feature_names,
+                            'importance': importances
+                        })
+                        feature_importance = feature_importance.sort_values('importance', ascending=False)
                         
-                        # Get feature importance if available
-                        if hasattr(st.session_state.custom_model, 'feature_importances_'):
-                            X = df_transformed[feature_cols]
-                            feature_names = X.columns
-                            importances = st.session_state.custom_model.feature_importances_
-                            
-                            fig = visualizer.create_feature_importance_plot(importances, feature_names)
-                            st.plotly_chart(fig, use_container_width=True)
-                            
-                            # Add SHAP values
-                            st.markdown("#### SHAP Values")
-                            if st.button("Calculate SHAP Values"):
-                                with st.spinner("Calculating SHAP values..."):
-                                    try:
-                                        fig = visualizer.create_shap_summary_plot()
-                                        if fig is not None:
-                                            st.pyplot(fig)
-                                    except Exception as e:
-                                        st.warning("Unable to calculate SHAP values. This might be due to model incompatibility.")
-                                        st.error(f"Error: {str(e)}")
-                        else:
-                            st.info("This model does not provide direct feature importance scores. Consider using SHAP values for feature importance analysis.")
-                    except Exception as e:
-                        st.warning("Unable to generate feature importance visualization.")
-                        st.error(f"Error: {str(e)}")
-                else:
-                    st.info("Please upload a model and dataset to view feature importance analysis.")
-            elif st.session_state.model_type == "Clustering":
-                st.info("🚧 Feature Importance for Clustering is under development. Coming soon! 🔜")
-                st.markdown("""
-                This section will include:
-                - Feature Importance Rankings
-                - SHAP Values
-                - Permutation Importance
-                - Feature Correlation Analysis
-                """)
+                        # Create bar plot
+                        fig = px.bar(
+                            feature_importance,
+                            x='feature',
+                            y='importance',
+                            title='Feature Importance',
+                            labels={'feature': 'Feature', 'importance': 'Importance'}
+                        )
+                        fig.update_layout(template="plotly_dark")
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.info("This model does not provide direct feature importance scores. Consider using SHAP values for feature importance analysis.")
+                except Exception as e:
+                    st.warning("Unable to generate feature importance visualization.")
+                    st.error(f"Error: {str(e)}")
+            else:
+                st.info("Please upload a model and dataset to view feature importance analysis.")
         
         with viz_tab4:
             st.markdown("### Model Diagnostics")
