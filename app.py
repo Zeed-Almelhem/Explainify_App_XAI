@@ -1,5 +1,3 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -527,14 +525,30 @@ def create_classification_analysis(df, target_col):
     
     # Feature Analysis
     st.subheader("Feature Analysis")
-    numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns
-    categorical_cols = df.select_dtypes(include=['object']).columns
+    numeric_cols = []
+    categorical_cols = []
+    
+    for col in df.columns:
+        if col != target_col:
+            n_unique = df[col].nunique()
+            if df[col].dtype in ['object', 'category']:
+                categorical_cols.append(col)
+            elif df[col].dtype in ['int64', 'float64']:
+                # If numeric column has few unique values (encoded categorical)
+                if n_unique <= 10:  # Threshold for considering as categorical
+                    categorical_cols.append(col)
+                else:
+                    numeric_cols.append(col)
+    
+    # Convert lists to pandas Index for consistency
+    numeric_cols = pd.Index(numeric_cols)
+    categorical_cols = pd.Index(categorical_cols)
     
     # Numeric Features
     if len(numeric_cols) > 0:
         st.markdown("#### Numerical Features by Target")
         selected_num_col = st.selectbox("Select Numerical Feature", 
-                                      [col for col in numeric_cols if col != target_col],
+                                      numeric_cols,
                                       key="class_num_feat")
         fig = px.box(df, x=target_col, y=selected_num_col,
                     title=f"{selected_num_col} Distribution by {target_col}")
@@ -543,17 +557,21 @@ def create_classification_analysis(df, target_col):
     # Categorical Features
     if len(categorical_cols) > 0:
         st.markdown("#### Categorical Features by Target")
-        selected_cat_col = st.selectbox(
-            "Select Categorical Feature",
-            [col for col in categorical_cols if col != target_col],
-            key="class_cat_feat"
-        )
-        
-        # Create contingency table
-        contingency = pd.crosstab(df[selected_cat_col], df[target_col], normalize='index')
-        fig = px.bar(contingency, barmode='stack',
-                    title=f"{selected_cat_col} vs {target_col}")
-        st.plotly_chart(fig, key="class_cat_bar")
+        if categorical_cols.tolist():  # Check if there are any categorical columns
+            selected_cat_col = st.selectbox(
+                "Select Categorical Feature",
+                categorical_cols,
+                key="class_cat_feat"
+            )
+            
+            # Create contingency table only if a column is selected
+            if selected_cat_col:
+                contingency = pd.crosstab(df[selected_cat_col], df[target_col], normalize='index')
+                fig = px.bar(contingency, barmode='stack',
+                            title=f"{selected_cat_col} vs {target_col}")
+                st.plotly_chart(fig, key="class_cat_bar")
+        else:
+            st.info("No categorical features found in the dataset.")
 
 def create_regression_analysis(df, target_col):
     """Create regression-specific analysis visualizations."""
@@ -1106,7 +1124,7 @@ def main():
                         target_col = None
             elif st.session_state.model_type == "Clustering":
                 if st.session_state.selected_model == "Customer Segmentation (Wholesale)":
-                    df = pd.read_csv('files/Clustering/customer_segmentation_X_train.csv')
+                    df = pd.read_csv('files/Clustering/wholesale_customers_clustering_dataset.csv')
                     target_col = None
         else:
             df = st.session_state.uploaded_data
