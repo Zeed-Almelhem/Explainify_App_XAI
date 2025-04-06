@@ -18,6 +18,8 @@ if 'custom_model' not in st.session_state:
     st.session_state.custom_model = None
 if 'is_custom' not in st.session_state:
     st.session_state.is_custom = False
+if 'start_exploration' not in st.session_state:
+    st.session_state.start_exploration = False
 
 def set_sidebar_style():
     st.markdown("""
@@ -77,6 +79,9 @@ def set_sidebar_style():
     """, unsafe_allow_html=True)
 
 def handle_file_upload(require_target=True):
+    # Reset exploration state when uploading new file
+    st.session_state.start_exploration = False
+    
     uploaded_file = st.file_uploader("Upload your dataset (CSV)", type=['csv'], key="dataset_uploader")
     if uploaded_file is not None:
         try:
@@ -146,6 +151,9 @@ def handle_text_upload():
     return False
 
 def handle_model_upload():
+    # Reset exploration state when uploading new model
+    st.session_state.start_exploration = False
+    
     model_library = st.selectbox(
         "Select the library used for training",
         ["scikit-learn", "TensorFlow", "PyTorch", "XGBoost", "LightGBM", "CatBoost"],
@@ -206,7 +214,8 @@ def main():
         model_type = st.radio(
             "Select Model Type",
             ["Classification", "Regression", "Clustering", "Natural Language Processing"],
-            key="model_type_radio"
+            key="model_type_radio",
+            on_change=lambda: setattr(st.session_state, 'start_exploration', False)
         )
 
         st.markdown("---")
@@ -240,7 +249,8 @@ def main():
         selected_model = st.selectbox(
             "Select Model",
             model_options,
-            key="model_selector"
+            key="model_selector",
+            on_change=lambda: setattr(st.session_state, 'start_exploration', False)
         )
 
         # Save selections to session state
@@ -298,6 +308,10 @@ def main():
                     with col2:
                         st.metric("Number of Features", df.shape[1] - 1)  # Subtract target column
                     
+                    # Add Start Exploration button
+                    if st.button("🔍 Start Model Exploration", key="explore_churn"):
+                        st.session_state.start_exploration = True
+                        
             elif st.session_state.model_type == "Regression":
                 if st.session_state.selected_model == "House Price Predictor":
                     st.write("Predict house prices based on various features like location, size, and amenities.")
@@ -322,6 +336,10 @@ def main():
                     with col2:
                         st.metric("Number of Features", df.shape[1] - 1)  # Subtract target column
                     
+                    # Add Start Exploration button
+                    if st.button("🔍 Start Model Exploration", key="explore_house"):
+                        st.session_state.start_exploration = True
+                    
             elif st.session_state.model_type == "Clustering":
                 if st.session_state.selected_model == "Customer Segmentation (Wholesale)":
                     st.write("Segment wholesale customers based on their annual spending across different product categories.")
@@ -340,26 +358,51 @@ def main():
                         st.metric("Number of Rows", df.shape[0])
                     with col2:
                         st.metric("Number of Features", df.shape[1])  # All columns are features in clustering
+                    
+                    # Add Start Exploration button
+                    if st.button("🔍 Start Model Exploration", key="explore_cluster"):
+                        st.session_state.start_exploration = True
     else:
         # Custom dataset and model upload interface
         st.markdown("### Upload Your Data")
         if st.session_state.model_type in ["Classification", "Regression"]:
             if handle_file_upload(require_target=True):
                 st.success(f"Dataset loaded successfully! Target column: {st.session_state.target_column}")
+                
+                # Show model upload section only after data is loaded
+                st.markdown("### Upload Your Model")
+                if handle_model_upload():
+                    # Add Start Exploration button for custom models
+                    if st.button("🔍 Start Model Exploration", key="explore_custom"):
+                        st.session_state.start_exploration = True
+                        
         elif st.session_state.model_type == "Clustering":
             if handle_file_upload(require_target=False):
                 st.success("Dataset loaded successfully!")
+                
+                # Show model upload section only after data is loaded
+                st.markdown("### Upload Your Model")
+                if handle_model_upload():
+                    # Add Start Exploration button for custom models
+                    if st.button("🔍 Start Model Exploration", key="explore_custom_cluster"):
+                        st.session_state.start_exploration = True
         else:  # NLP
             if handle_text_upload():
-                if st.session_state.target_column:
-                    st.success(f"Text dataset loaded successfully! Label column: {st.session_state.target_column}")
-                else:
-                    st.success("Text dataset loaded successfully!")
-        
-        # Model upload section
-        if st.session_state.uploaded_data is not None:
-            st.markdown("### Upload Your Model")
-            handle_model_upload()
+                st.success("Text data loaded successfully!")
+                
+                # Show model upload section only after data is loaded
+                st.markdown("### Upload Your Model")
+                if handle_model_upload():
+                    # Add Start Exploration button for custom models
+                    if st.button("🔍 Start Model Exploration", key="explore_custom_nlp"):
+                        st.session_state.start_exploration = True
+
+    # Add visualization section if exploration has started
+    if 'start_exploration' in st.session_state and st.session_state.start_exploration:
+        st.markdown("---")
+        st.markdown("## Model Exploration")
+        # Here we'll add all the visualization and exploration components
+        # This section will only appear after clicking the Start Exploration button
 
 if __name__ == '__main__':
     main()
