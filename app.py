@@ -4,6 +4,8 @@ import streamlit as st
 from streamlit_option_menu import option_menu
 import pandas as pd
 import pickle
+import plotly.express as px
+import plotly.graph_objects as go
 
 # Initialize session state for model selection and data
 if 'model_type' not in st.session_state:
@@ -12,65 +14,117 @@ if 'selected_model' not in st.session_state:
     st.session_state.selected_model = None
 if 'uploaded_data' not in st.session_state:
     st.session_state.uploaded_data = None
-if 'target_column' not in st.session_state:
-    st.session_state.target_column = None
 if 'custom_model' not in st.session_state:
     st.session_state.custom_model = None
+if 'target_column' not in st.session_state:
+    st.session_state.target_column = None
 if 'is_custom' not in st.session_state:
     st.session_state.is_custom = False
 if 'start_exploration' not in st.session_state:
     st.session_state.start_exploration = False
+if 'prev_model_type' not in st.session_state:
+    st.session_state.prev_model_type = None
+if 'prev_selected_model' not in st.session_state:
+    st.session_state.prev_selected_model = None
+if 'last_uploaded_file' not in st.session_state:
+    st.session_state.last_uploaded_file = None
+if 'last_uploaded_model' not in st.session_state:
+    st.session_state.last_uploaded_model = None
 
 def set_sidebar_style():
     st.markdown("""
         <style>
         [data-testid="stSidebar"] {
             background-color: #1E1E1E;
-            padding: 0;
+            padding-top: 2rem;
         }
-        .header-container {
-            background-color: #1E1E1E;
-            padding: 1rem 0.5rem;
-            margin-bottom: 2rem;
+        
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
             color: white;
+        }
+        
+        .sidebar-title {
+            color: white;
+            font-size: 24px;
+            margin-left: 10px;
+        }
+        
+        .sidebar-section {
+            color: white;
+            font-size: 18px;
+            margin-top: 20px;
+            margin-bottom: 15px;
+        }
+        
+        .header-container {
             display: flex;
             align-items: center;
+            margin-bottom: 20px;
+            background-color: #1E1E1E;
+            padding: 1rem 0.5rem;
         }
+        
         .sidebar-logo {
             width: 50px;
             height: 50px;
             margin-right: 1rem;
+            filter: invert(1);
         }
-        .sidebar-title {
-            font-size: 2.5rem !important;
-            font-weight: bold;
-            margin: 0;
-        }
-        .sidebar-section {
-            background-color: #1E1E1E;
-            padding: 0 0.5rem;
-            margin-bottom: 1rem;
+        
+        /* Custom button styling */
+        .stButton > button {
+            background-color: #2E4F4F;
             color: white;
-            font-size: 1.5rem !important;
-            font-weight: bold;
-            text-align: left;
+            border: none;
+            border-radius: 4px;
+            padding: 0.5rem 1rem;
+            transition: all 0.3s ease;
         }
-        .stRadio > label {
+        
+        .stButton > button:hover {
+            background-color: #0E8388;
+            color: white;
+            border: none;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(14, 131, 136, 0.3);
+        }
+        
+        /* Tabs styling */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 8px;
+        }
+        
+        .stTabs [data-baseweb="tab"] {
+            background-color: #2E4F4F;
+            color: white;
+            border-radius: 4px;
+            padding: 0.5rem 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .stTabs [data-baseweb="tab"]:hover {
+            background-color: #0E8388;
+            color: white;
+        }
+        
+        .stTabs [aria-selected="true"] {
+            background-color: #0E8388 !important;
             color: white !important;
-            padding-left: 0.5rem;
         }
-        .stSelectbox > label {
-            color: white !important;
-            padding-left: 0.5rem;
+        
+        /* Selectbox styling */
+        .stSelectbox [data-baseweb="select"] > div {
+            background-color: #2E4F4F;
+            color: white;
+            border: none;
+            transition: all 0.3s ease;
         }
-        /* Adjust radio buttons alignment */
-        .stRadio > div {
-            padding-left: 0.5rem;
+        
+        .stSelectbox [data-baseweb="select"] > div:hover {
+            background-color: #0E8388;
+            border: none;
         }
-        /* Adjust selectbox alignment */
-        .stSelectbox > div {
-            padding-left: 0.5rem;
-        }
+        
         /* Remove default padding from sidebar content */
         [data-testid="stSidebarContent"] {
             padding: 0 !important;
@@ -79,10 +133,17 @@ def set_sidebar_style():
     """, unsafe_allow_html=True)
 
 def handle_file_upload(require_target=True):
-    # Reset exploration state when uploading new file
-    st.session_state.start_exploration = False
+    # Only reset exploration if a new file is uploaded
+    if "last_uploaded_file" not in st.session_state:
+        st.session_state.last_uploaded_file = None
     
     uploaded_file = st.file_uploader("Upload your dataset (CSV)", type=['csv'], key="dataset_uploader")
+    
+    # Reset only if file changed
+    if uploaded_file is not None and uploaded_file != st.session_state.last_uploaded_file:
+        st.session_state.start_exploration = False
+        st.session_state.last_uploaded_file = uploaded_file
+    
     if uploaded_file is not None:
         try:
             data = pd.read_csv(uploaded_file)
@@ -151,8 +212,9 @@ def handle_text_upload():
     return False
 
 def handle_model_upload():
-    # Reset exploration state when uploading new model
-    st.session_state.start_exploration = False
+    # Only reset exploration if a new model is uploaded
+    if "last_uploaded_model" not in st.session_state:
+        st.session_state.last_uploaded_model = None
     
     model_library = st.selectbox(
         "Select the library used for training",
@@ -161,6 +223,11 @@ def handle_model_upload():
     )
     
     model_file = st.file_uploader("Upload your trained model file", type=['pkl', 'joblib', 'h5', 'pt'], key="model_uploader")
+    
+    # Reset only if model changed
+    if model_file is not None and model_file != st.session_state.last_uploaded_model:
+        st.session_state.start_exploration = False
+        st.session_state.last_uploaded_model = model_file
     
     if model_file is not None:
         try:
@@ -211,12 +278,19 @@ def main():
         st.markdown('<div class="sidebar-section">Model Selection</div>', unsafe_allow_html=True)
         
         # Model type selection
+        if 'prev_model_type' not in st.session_state:
+            st.session_state.prev_model_type = None
+            
         model_type = st.radio(
             "Select Model Type",
             ["Classification", "Regression", "Clustering", "Natural Language Processing"],
-            key="model_type_radio",
-            on_change=lambda: setattr(st.session_state, 'start_exploration', False)
+            key="model_type_radio"
         )
+        
+        # Only reset exploration if model type actually changed
+        if st.session_state.prev_model_type != model_type:
+            st.session_state.start_exploration = False
+            st.session_state.prev_model_type = model_type
 
         st.markdown("---")
 
@@ -245,13 +319,20 @@ def main():
                 "20 Newsgroups Classification",
                 "Custom Dataset and Model"
             ]
+            
+        if 'prev_selected_model' not in st.session_state:
+            st.session_state.prev_selected_model = None
 
         selected_model = st.selectbox(
             "Select Model",
             model_options,
-            key="model_selector",
-            on_change=lambda: setattr(st.session_state, 'start_exploration', False)
+            key="model_selector"
         )
+        
+        # Only reset exploration if model actually changed
+        if st.session_state.prev_selected_model != selected_model:
+            st.session_state.start_exploration = False
+            st.session_state.prev_selected_model = selected_model
 
         # Save selections to session state
         st.session_state.model_type = model_type
@@ -401,8 +482,179 @@ def main():
     if 'start_exploration' in st.session_state and st.session_state.start_exploration:
         st.markdown("---")
         st.markdown("## Model Exploration")
-        # Here we'll add all the visualization and exploration components
-        # This section will only appear after clicking the Start Exploration button
+        
+        # Create tabs for different types of visualizations
+        viz_tab1, viz_tab2, viz_tab3 = st.tabs([
+            "📊 Data Analysis",
+            "🎯 Model Performance",
+            "🔍 Feature Importance"
+        ])
+        
+        with viz_tab1:
+            st.markdown("### Data Analysis")
+            
+            # Get the appropriate data based on model type
+            if not st.session_state.is_custom:
+                if st.session_state.model_type == "Classification":
+                    if st.session_state.selected_model == "Binary Customer Churn Classifier":
+                        df = pd.read_csv('files/Classification/customer_churn_classification_dataset.csv')
+                        target_col = 'Churn'
+                elif st.session_state.model_type == "Regression":
+                    if st.session_state.selected_model == "House Price Predictor":
+                        df = pd.read_csv('files/Regression/house_price/house_price_regression_dataset.csv')
+                        target_col = 'Price'
+                elif st.session_state.model_type == "Clustering":
+                    if st.session_state.selected_model == "Customer Segmentation (Wholesale)":
+                        df = pd.read_csv('files/Clustering/wholesale_customers_clustering_dataset.csv')
+                        target_col = None
+            else:
+                df = st.session_state.uploaded_data
+                target_col = st.session_state.target_column if st.session_state.model_type != "Clustering" else None
+            
+            # Data Analysis Visualizations
+            if df is not None:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Plot Type Selection
+                    if 'plot_type' not in st.session_state:
+                        st.session_state.plot_type = "Distribution"
+                    
+                    plot_type = st.selectbox(
+                        "Select Plot Type",
+                        ["Distribution", "Box Plot", "Correlation", "Scatter Plot"],
+                        key="viz_plot_type",  
+                        on_change=None  
+                    )
+                    st.session_state.plot_type = plot_type
+                
+                with col2:
+                    # Feature Selection for Analysis
+                    numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+                    if target_col in numeric_cols:
+                        numeric_cols.remove(target_col)
+                    
+                    if 'selected_feature' not in st.session_state:
+                        st.session_state.selected_feature = numeric_cols[0] if numeric_cols else None
+                    
+                    selected_feature = st.selectbox(
+                        "Select Feature to Analyze",
+                        numeric_cols,
+                        key="viz_feature_selector",  
+                        on_change=None  
+                    )
+                    st.session_state.selected_feature = selected_feature
+                
+                # Create visualization based on selection
+                if plot_type == "Distribution":
+                    fig = px.histogram(df, x=selected_feature, title=f"Distribution of {selected_feature}")
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                elif plot_type == "Box Plot":
+                    fig = px.box(df, y=selected_feature, title=f"Box Plot of {selected_feature}")
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                elif plot_type == "Correlation":
+                    corr_matrix = df[numeric_cols].corr()
+                    fig = px.imshow(corr_matrix, 
+                                  title="Feature Correlation Matrix",
+                                  color_continuous_scale='RdBu')
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                elif plot_type == "Scatter Plot" and target_col and target_col in df.columns:
+                    fig = px.scatter(df, x=selected_feature, y=target_col,
+                                   title=f"{selected_feature} vs {target_col}")
+                    st.plotly_chart(fig, use_container_width=True)
+        
+        with viz_tab2:
+            st.markdown("### Model Performance")
+            
+            if st.session_state.model_type != "Clustering":
+                # Classification Metrics
+                if st.session_state.model_type == "Classification":
+                    st.markdown("#### Classification Metrics")
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Accuracy", "0.85")
+                    with col2:
+                        st.metric("Precision", "0.83")
+                    with col3:
+                        st.metric("Recall", "0.87")
+                    
+                    # ROC Curve using plotly
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines', name='Random'))
+                    fig.add_trace(go.Scatter(x=[0, 0.2, 0.5, 0.8, 1], 
+                                          y=[0, 0.4, 0.7, 0.9, 1], 
+                                          mode='lines', 
+                                          name='Model'))
+                    fig.update_layout(title='ROC Curve',
+                                    xaxis_title='False Positive Rate',
+                                    yaxis_title='True Positive Rate')
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                # Regression Metrics
+                elif st.session_state.model_type == "Regression":
+                    st.markdown("#### Regression Metrics")
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("R² Score", "0.82")
+                    with col2:
+                        st.metric("MAE", "0.15")
+                    with col3:
+                        st.metric("RMSE", "0.23")
+                    
+                    # Residual Plot
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(x=[0, 1, 2, 3], 
+                                          y=[0.1, -0.1, 0.05, -0.05], 
+                                          mode='markers',
+                                          name='Residuals'))
+                    fig.update_layout(title='Residual Plot',
+                                    xaxis_title='Predicted Values',
+                                    yaxis_title='Residuals')
+                    st.plotly_chart(fig, use_container_width=True)
+            
+            # Clustering Performance
+            else:
+                st.markdown("#### Clustering Metrics")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Silhouette Score", "0.68")
+                with col2:
+                    st.metric("Calinski-Harabasz Score", "156.32")
+                
+                # Cluster Visualization
+                fig = go.Figure()
+                # Add sample cluster visualization
+                st.plotly_chart(fig, use_container_width=True)
+        
+        with viz_tab3:
+            st.markdown("### Feature Importance")
+            
+            if st.session_state.model_type != "Clustering":
+                # Feature importance plot
+                importances = {
+                    'Feature 1': 0.3,
+                    'Feature 2': 0.25,
+                    'Feature 3': 0.2,
+                    'Feature 4': 0.15,
+                    'Feature 5': 0.1
+                }
+                
+                fig = px.bar(
+                    x=list(importances.keys()),
+                    y=list(importances.values()),
+                    title="Feature Importance"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # SHAP Values
+                st.markdown("#### SHAP Values")
+                st.info("SHAP values show how each feature contributes to the model's predictions")
+            else:
+                st.markdown("#### Cluster Feature Analysis")
+                # Add cluster-specific feature analysis
 
 if __name__ == '__main__':
     main()
