@@ -768,76 +768,14 @@ def main():
             st.markdown("### Model Performance")
             
             if st.session_state.model_type == "Classification":
-                if st.session_state.get('custom_model') is not None and df is not None and target_col in df.columns:
-                    try:
-                        # Load the correct model for classification if using pre-built
-                        if not st.session_state.is_custom:
-                            st.session_state.custom_model = load_prebuilt_model("Classification")
-                            if st.session_state.custom_model is None:
-                                st.error("Failed to load pre-built classification model.")
-                                return
-                        
-                        # Transform features to match model expectations
-                        df_transformed, feature_cols = validate_and_transform_features(df, "Classification", target_col)
-                        
-                        if len(feature_cols) == 0:
-                            st.error("No valid features found for the model.")
-                            return
-                        
-                        X = df_transformed[feature_cols]
-                        y = df_transformed[target_col]
-                        
-                        # Make predictions
-                        y_pred = st.session_state.custom_model.predict(X)
-                        y_pred_proba = st.session_state.custom_model.predict_proba(X)[:, 1]
-                        
-                        # Calculate and display metrics
-                        from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-                        
-                        col1, col2, col3, col4 = st.columns(4)
-                        with col1:
-                            st.metric("Accuracy", f"{accuracy_score(y, y_pred):.3f}")
-                        with col2:
-                            st.metric("Precision", f"{precision_score(y, y_pred):.3f}")
-                        with col3:
-                            st.metric("Recall", f"{recall_score(y, y_pred):.3f}")
-                        with col4:
-                            st.metric("F1 Score", f"{f1_score(y, y_pred):.3f}")
-                        
-                        # ROC Curve
-                        fpr, tpr, _ = roc_curve(y, y_pred_proba)
-                        fig = px.line(x=fpr, y=tpr, 
-                                    title='ROC Curve',
-                                    labels={'x': 'False Positive Rate', 'y': 'True Positive Rate'})
-                        fig.add_shape(type='line', line=dict(dash='dash'),
-                                    x0=0, x1=1, y0=0, y1=1)
-                        fig.update_layout(template="plotly_dark")
-                        st.plotly_chart(fig, use_container_width=True)
-                        
-                        # Confusion Matrix
-                        cm = confusion_matrix(y, y_pred)
-                        fig = px.imshow(cm,
-                                      labels=dict(x="Predicted", y="Actual"),
-                                      title="Confusion Matrix",
-                                      color_continuous_scale="Viridis")
-                        fig.update_layout(template="plotly_dark")
-                        st.plotly_chart(fig, use_container_width=True)
-                        
-                    except Exception as e:
-                        st.warning("Unable to generate classification performance metrics and plots.")
-                        st.error(f"Error: {str(e)}")
-                        st.error("Debug info:")
-                        st.write(f"Data shape: {df.shape if df is not None else None}")
-                        st.write(f"Target column: {target_col}")
-                        st.write(f"Feature columns: {feature_cols if 'feature_cols' in locals() else None}")
-                else:
-                    if not st.session_state.get('custom_model'):
-                        st.error("No model available. Please ensure a model is loaded.")
-                    elif df is None:
-                        st.error("No dataset available. Please ensure data is loaded.")
-                    elif target_col not in df.columns:
-                        st.error(f"Target column '{target_col}' not found in dataset.")
-            
+                st.info("🚧 Classification Model Performance is under development. Coming soon! 🔜")
+                st.markdown("""
+                This section will include:
+                - Accuracy, Precision, Recall metrics
+                - ROC Curve
+                - Confusion Matrix
+                - Classification Report
+                """)
             elif st.session_state.model_type == "Regression":
                 # Get the appropriate data based on model type
                 if not st.session_state.is_custom:
@@ -990,40 +928,40 @@ def main():
                         st.error(f"Target column '{target_col}' not found in dataset.")
             
             elif st.session_state.model_type == "Clustering":
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Silhouette Score", "0.68")
-                with col2:
-                    st.metric("Calinski-Harabasz Score", "156.32")
+                st.info("🚧 Clustering Model Performance is under development. Coming soon! 🔜")
+                st.markdown("""
+                This section will include:
+                - Silhouette Score
+                - Inertia Plot
+                - Cluster Visualization
+                - Distribution Analysis
+                """)
                 
-                # Add Cluster Visualization
-                if st.session_state.get('custom_model') is not None and df is not None:
-                    try:
-                        numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns
-                        selected_features = st.multiselect(
-                            "Select Features for Cluster Visualization",
-                            numeric_cols,
-                            default=list(numeric_cols[:2]) if len(numeric_cols) >= 2 else []
-                        )
-                        
-                        if len(selected_features) >= 2:
-                            X = df[selected_features]
-                            labels = st.session_state.custom_model.predict(X)
-                            fig = visualizer.create_cluster_plot(selected_features, labels)
-                            if fig is not None:
-                                st.plotly_chart(fig, use_container_width=True)
-                    except Exception as e:
-                        st.warning("Unable to generate clustering visualization. Please ensure your model is properly trained and compatible with the data.")
-                        st.error(f"Error: {str(e)}")
+                # Add a note about the development status
+                st.markdown("""
+                > Note: We are actively working on implementing clustering functionality. 
+                > This will include interactive visualizations and comprehensive cluster analysis tools.
+                > Stay tuned for updates!
+                """)
         
         with viz_tab3:
             st.markdown("### Feature Importance")
             
-            if st.session_state.model_type != "Clustering":
+            if st.session_state.model_type == "Classification":
+                st.info("🚧 Feature Importance for Classification is under development. Coming soon! 🔜")
+                st.markdown("""
+                This section will include:
+                - Feature Importance Rankings
+                - SHAP Values
+                - Permutation Importance
+                - Feature Correlation Analysis
+                """)
+            elif st.session_state.model_type == "Regression":
+                # Calculate regression metrics if we have a model and data
                 if st.session_state.get('custom_model') is not None and df is not None and target_col in df.columns:
                     try:
                         # Transform features to match model expectations
-                        df_transformed, feature_cols = validate_and_transform_features(df, st.session_state.model_type, target_col)
+                        df_transformed, feature_cols = validate_and_transform_features(df, "Regression", target_col)
                         
                         if len(feature_cols) == 0:
                             st.error("No valid features found for the model.")
@@ -1056,8 +994,15 @@ def main():
                         st.error(f"Error: {str(e)}")
                 else:
                     st.info("Please upload a model and dataset to view feature importance analysis.")
-            else:
-                st.info("Feature importance analysis is not available for clustering models.")
+            elif st.session_state.model_type == "Clustering":
+                st.info("🚧 Feature Importance for Clustering is under development. Coming soon! 🔜")
+                st.markdown("""
+                This section will include:
+                - Feature Importance Rankings
+                - SHAP Values
+                - Permutation Importance
+                - Feature Correlation Analysis
+                """)
         
         with viz_tab4:
             st.markdown("### Model Diagnostics")
