@@ -11,3 +11,4 @@ matplotlib==3.8.3
 yellowbrick==1.5
 optuna==3.5.0
 streamlit_option_menu==0.4.0
+distutils==0.1.0
