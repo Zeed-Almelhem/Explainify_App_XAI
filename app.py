@@ -826,6 +826,10 @@ def main():
             model_options,
             key="model_selector"
         )
+        # Add ML image after model selection with larger size and margin
+        st.markdown('<div style="margin-top: 40px;">', unsafe_allow_html=True)
+        st.image("files/ML-removebg.png", width=250, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
         
         # Only reset exploration if model actually changed
         if st.session_state.prev_selected_model != selected_model:
@@ -848,7 +852,7 @@ def main():
         model = models(st.session_state.selected_model)
         
         if model.is_coming_soon:
-            st.warning("🚧 This model is currently in development and will be available after the hackathon! Stay tuned! 🚧")
+            st.warning("🚧 This model is currently in development and will be available soon! Stay tuned! 🚧")
             if st.session_state.model_type == "Classification":
                 if st.session_state.selected_model == "Brazilian E-Commerce Dataset":
                     st.write("Coming soon: Predict order status in Brazilian e-commerce transactions.")
