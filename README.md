@@ -133,5 +133,11 @@ Feel free to contribute to this project by:
 - Adding support for more model types and frameworks
 - Implementing additional XAI techniques
 
+## Coming Soon
+- Explainability for BERT models built with Google Pytorch tools.
+
+
 ## License
 MIT License
+
+
